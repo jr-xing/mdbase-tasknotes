@@ -1,21 +1,41 @@
 import { defineConfig } from "tsup";
 import path from "node:path";
 
-export default defineConfig({
-  entry: ["src/cli.ts"],
-  format: ["esm"],
+const common = {
+  format: ["esm"] as const,
   target: "node20",
   outDir: "dist",
-  clean: true,
   splitting: false,
   noExternal: ["tasknotes-nlp-core", "rrule"],
-  esbuildOptions(options) {
+  esbuildOptions(options: any) {
     options.alias = {
       ...(options.alias || {}),
       rrule: path.resolve("src/shims/rrule.ts"),
     };
   },
-  banner: {
-    js: "#!/usr/bin/env node",
+};
+
+export default defineConfig([
+  {
+    ...common,
+    entry: ["src/cli.ts"],
+    clean: true,
+    banner: {
+      js: "#!/usr/bin/env node",
+    },
   },
-});
+  {
+    ...common,
+    entry: [
+      "src/date.ts",
+      "src/field-mapping.ts",
+      "src/recurrence.ts",
+      "src/create-compat.ts",
+      "src/config.ts",
+      "src/collection.ts",
+      "src/mapper.ts",
+      "src/conformance.ts",
+    ],
+    clean: false,
+  },
+]);
