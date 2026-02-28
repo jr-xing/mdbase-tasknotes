@@ -8,7 +8,7 @@ import {
   resolveDisplayTitle,
 } from "../field-mapping.js";
 import { completeRecurringTask } from "../recurrence.js";
-import { resolveDateOrToday } from "../date.js";
+import { resolveDateOrToday, resolveOperationTargetDate } from "../date.js";
 
 export async function completeCommand(
   pathOrTitle: string,
@@ -34,13 +34,17 @@ export async function completeCommand(
         return;
       }
 
-      const today = resolveDateOrToday(options.date);
       if (isRecurring) {
+        const targetDate = resolveOperationTargetDate(
+          options.date,
+          typeof fm.scheduled === "string" ? fm.scheduled : undefined,
+          typeof fm.due === "string" ? fm.due : undefined,
+        );
         const completeInstances = Array.isArray(fm.completeInstances)
           ? (fm.completeInstances as string[])
           : [];
-        if (completeInstances.includes(today)) {
-          showSuccess(`Recurring instance already completed on ${today}: ${taskTitle}`);
+        if (completeInstances.includes(targetDate)) {
+          showSuccess(`Recurring instance already completed on ${targetDate}: ${taskTitle}`);
           return;
         }
 
@@ -51,7 +55,7 @@ export async function completeCommand(
           scheduled: typeof fm.scheduled === "string" ? fm.scheduled : undefined,
           due: typeof fm.due === "string" ? fm.due : undefined,
           dateCreated: typeof fm.dateCreated === "string" ? fm.dateCreated : undefined,
-          completionDate: today,
+          completionDate: targetDate,
           completeInstances: Array.isArray(fm.completeInstances)
             ? (fm.completeInstances as string[])
             : undefined,
@@ -66,7 +70,7 @@ export async function completeCommand(
             fields: denormalizeFrontmatter(
               {
                 status: completionStatus,
-                completedDate: today,
+                completedDate: targetDate,
                 recurrence: recurring.updatedRecurrence,
                 completeInstances: recurring.completeInstances,
                 skippedInstances: recurring.skippedInstances,
@@ -108,6 +112,8 @@ export async function completeCommand(
         showSuccess(`Completed recurring instance: ${taskTitle} → next ${recurring.nextScheduled}`);
         return;
       }
+
+      const today = resolveDateOrToday(options.date);
 
       const result = await collection.update({
         path: taskPath,

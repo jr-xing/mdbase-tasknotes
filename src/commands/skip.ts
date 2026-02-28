@@ -2,7 +2,7 @@ import { withCollection, resolveTaskPath } from "../collection.js";
 import { showError, showSuccess } from "../format.js";
 import { normalizeFrontmatter, denormalizeFrontmatter, resolveDisplayTitle } from "../field-mapping.js";
 import { recalculateRecurringSchedule } from "../recurrence.js";
-import { resolveDateOrToday } from "../date.js";
+import { resolveOperationTargetDate } from "../date.js";
 
 export async function skipCommand(
   pathOrTitle: string,
@@ -39,7 +39,11 @@ async function setSkipState(
         process.exit(1);
       }
 
-      const targetDate = resolveDateOrToday(options.date);
+      const targetDate = resolveOperationTargetDate(
+        options.date,
+        typeof fm.scheduled === "string" ? fm.scheduled : undefined,
+        typeof fm.due === "string" ? fm.due : undefined,
+      );
       const completeInstances = Array.isArray(fm.completeInstances)
         ? (fm.completeInstances as string[])
         : [];

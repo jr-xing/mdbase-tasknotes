@@ -241,12 +241,11 @@ export function resolveDisplayTitle(
   mapping: FieldMapping,
   taskPath?: string,
 ): string | undefined {
-  const mappedKey = mapping.fieldToRole[mapping.displayNameKey] === "title"
-    ? "title"
-    : mapping.displayNameKey;
-
-  const candidates = [mappedKey, "title"];
+  const candidates = [mapping.displayNameKey, "title"];
+  const seen = new Set<string>();
   for (const key of candidates) {
+    if (seen.has(key)) continue;
+    seen.add(key);
     const value = frontmatter[key];
     if (typeof value === "string" && value.trim().length > 0) {
       return value;

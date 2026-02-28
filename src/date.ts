@@ -87,6 +87,36 @@ export function resolveDateOrToday(date?: string): string {
   return validateDateString(date);
 }
 
+/**
+ * Resolve operation target date for recurring instance actions.
+ * Priority:
+ * 1) explicit input date
+ * 2) scheduled date part
+ * 3) due date part
+ * 4) current local day
+ */
+export function resolveOperationTargetDate(
+  explicitDate: string | undefined,
+  scheduled: string | undefined,
+  due: string | undefined,
+): string {
+  if (explicitDate) {
+    return validateDateString(explicitDate);
+  }
+
+  const scheduledDatePart = extractValidDatePartOrUndefined(scheduled);
+  if (scheduledDatePart) {
+    return scheduledDatePart;
+  }
+
+  const dueDatePart = extractValidDatePartOrUndefined(due);
+  if (dueDatePart) {
+    return dueDatePart;
+  }
+
+  return getCurrentDateString();
+}
+
 export function validateDateString(date: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error(`Invalid date "${date}". Expected YYYY-MM-DD.`);
@@ -111,6 +141,19 @@ export function getDatePart(dateString: string): string {
     return dateString.slice(0, tIndex);
   }
   return formatDateForStorage(parseDateToUTC(dateString));
+}
+
+function extractValidDatePartOrUndefined(dateString: string | undefined): string | undefined {
+  if (!dateString || dateString.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const datePart = getDatePart(dateString.trim());
+    return validateDateString(datePart);
+  } catch {
+    return undefined;
+  }
 }
 
 export function isSameDateSafe(date1: string, date2: string): boolean {
