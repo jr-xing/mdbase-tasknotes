@@ -1,12 +1,16 @@
 import { isValid, parseISO } from "date-fns";
 
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_TIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,3})?(?:Z|([+-])(\d{2}):(\d{2}))?$/;
+
 export function parseDateToUTC(dateString: string): Date {
   if (!dateString || dateString.trim().length === 0) {
     throw new Error("Date string cannot be empty");
   }
 
   const trimmed = dateString.trim();
-  const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const dateOnlyMatch = trimmed.match(DATE_ONLY_RE);
   if (dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
     const y = Number(year);
@@ -24,6 +28,10 @@ export function parseDateToUTC(dateString: string): Date {
     return parsed;
   }
 
+  if (!isStrictDateTime(trimmed)) {
+    throw new Error(`Invalid date "${dateString}".`);
+  }
+
   const parsed = parseISO(trimmed);
   if (!isValid(parsed)) {
     throw new Error(`Invalid date "${dateString}".`);
@@ -37,7 +45,7 @@ export function parseDateToLocal(dateString: string): Date {
   }
 
   const trimmed = dateString.trim();
-  const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const dateOnlyMatch = trimmed.match(DATE_ONLY_RE);
   if (dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
     const y = Number(year);
@@ -53,6 +61,10 @@ export function parseDateToLocal(dateString: string): Date {
       throw new Error(`Invalid date "${dateString}".`);
     }
     return parsed;
+  }
+
+  if (!isStrictDateTime(trimmed)) {
+    throw new Error(`Invalid date "${dateString}".`);
   }
 
   const parsed = parseISO(trimmed);
@@ -174,4 +186,39 @@ export function isBeforeDateSafe(date1: string, date2: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isStrictDateTime(value: string): boolean {
+  const match = value.match(DATE_TIME_RE);
+  if (!match) return false;
+
+  const [, year, month, day, hours, minutes, seconds, , tzSign, tzHours, tzMinutes] = match;
+
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  const hh = Number(hours);
+  const mm = Number(minutes);
+  const ss = Number(seconds);
+
+  if (hh > 23 || mm > 59 || ss > 59) return false;
+
+  const date = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== m - 1 ||
+    date.getUTCDate() !== d
+  ) {
+    return false;
+  }
+
+  if (!tzSign) return true;
+
+  const offsetHours = Number(tzHours);
+  const offsetMinutes = Number(tzMinutes);
+
+  if (offsetHours > 14 || offsetMinutes > 59) return false;
+  if (offsetHours === 14 && offsetMinutes !== 0) return false;
+
+  return true;
 }

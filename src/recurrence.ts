@@ -98,18 +98,17 @@ function recalculateRecurringScheduleInternal(
   let updatedRecurrence = input.recurrence;
 
   if (anchor === "completion") {
-    if (input.completionDateForAnchor) {
-      updatedRecurrence =
-        updateDTSTARTInRecurrenceRule(updatedRecurrence, input.completionDateForAnchor) || updatedRecurrence;
-    }
+    const anchorDate = input.completionDateForAnchor || input.referenceDate || sourceDate;
+    updatedRecurrence =
+      updateDTSTARTInRecurrenceRule(updatedRecurrence, anchorDate) || updatedRecurrence;
   } else {
     updatedRecurrence =
       addDTSTARTToRecurrenceRule(updatedRecurrence, sourceDate) || updatedRecurrence;
   }
 
   const referenceDate =
-    (anchor === "scheduled" ? parseDateString(input.scheduled) : null) ||
-    parseDateString(input.referenceDate);
+    parseDateString(input.referenceDate) ||
+    parseDateString(input.scheduled);
   if (!referenceDate) {
     return { updatedRecurrence, nextScheduled: null, nextDue: null };
   }
@@ -117,11 +116,11 @@ function recalculateRecurringScheduleInternal(
   const completionDay = parseDateString(input.referenceDate);
   const completeInstances = Array.isArray(input.completeInstances) ? input.completeInstances : [];
   const skippedInstances = Array.isArray(input.skippedInstances) ? input.skippedInstances : [];
-  const processedDates = new Set<string>(
-    anchor === "completion"
-      ? skippedInstances
-      : [...completeInstances, ...skippedInstances],
-  );
+  const processedDates = new Set<string>([
+    ...completeInstances,
+    ...skippedInstances,
+    formatDateUTC(referenceDate),
+  ]);
   let nextOccurrence = getNextOccurrenceDate(updatedRecurrence, sourceDate, referenceDate, true);
 
   if (completionDay) {

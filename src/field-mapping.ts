@@ -143,7 +143,12 @@ function inferCompletedStatuses(fields: Record<string, any>, statusFieldName: st
       .filter((v: unknown): v is string => typeof v === "string")
       .filter((v: string) => {
         const lower = v.toLowerCase();
-        return lower.includes("done") || lower.includes("complete") || lower.includes("cancel");
+        return (
+          lower.includes("done") ||
+          lower.includes("complete") ||
+          lower.includes("cancel") ||
+          lower.includes("finish")
+        );
       });
     if (inferred.length > 0) return inferred;
   }

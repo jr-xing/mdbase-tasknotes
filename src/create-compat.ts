@@ -248,8 +248,12 @@ function buildTemplateValues(
     readString(frontmatter[statusField]) || readString(frontmatter.status) || "open",
   );
 
-  const dueDate = readString(frontmatter[dueField]) || readString(frontmatter.due) || "";
-  const scheduledDate = readString(frontmatter[scheduledField]) || readString(frontmatter.scheduled) || "";
+  const dueDateRaw = readString(frontmatter[dueField]) || readString(frontmatter.due) || "";
+  const scheduledDateRaw =
+    readString(frontmatter[scheduledField]) || readString(frontmatter.scheduled) || "";
+  const todayDate = format(now, "yyyy-MM-dd");
+  const dueDate = dueDateRaw || scheduledDateRaw || todayDate;
+  const scheduledDate = scheduledDateRaw || dueDateRaw || todayDate;
 
   const contexts = readStringList(frontmatter[contextsField] ?? frontmatter.contexts)
     .map((v) => sanitizeForPathSegment(v))
