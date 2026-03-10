@@ -9,7 +9,7 @@ import type { TaskResult } from "../types.js";
 
 export async function createCommand(
   text: string[],
-  options: { path?: string },
+  options: { path?: string; folder?: string },
 ): Promise<void> {
   const input = text.join(" ").trim();
   if (!input) {
@@ -28,6 +28,7 @@ export async function createCommand(
         mapping,
         frontmatter as Record<string, unknown>,
         body,
+        options.folder,
       );
 
       if (result.warnings && result.warnings.length > 0) {

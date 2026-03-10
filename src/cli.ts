@@ -39,9 +39,10 @@ program
 program
   .command("create <text...>")
   .description("Create a task from natural language text")
+  .option("-f, --folder <folder>", "Override output folder (e.g. projects)")
   .action((text: string[], opts: any) => {
     const parentOpts = program.opts();
-    return createCommand(text, { path: parentOpts.path });
+    return createCommand(text, { path: parentOpts.path, folder: opts.folder });
   });
 
 // List

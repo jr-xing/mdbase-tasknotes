@@ -36,6 +36,7 @@ export async function createTaskWithCompat(
   mapping: FieldMapping,
   roleFrontmatter: UnknownRecord,
   body?: string,
+  folder?: string,
 ): Promise<CreateResultLike> {
   const taskType = getTaskTypeDef(collection);
   const denormalized = denormalizeFrontmatter(roleFrontmatter, mapping);
@@ -50,9 +51,25 @@ export async function createTaskWithCompat(
     body,
   };
 
+  // If folder override is provided, derive path and replace the folder prefix.
+  // Omit type so mdbase skips match rule validation for the overridden path.
+  if (folder) {
+    const pathResolution = derivePathFromType(taskType, denormalized, mapping, new Date());
+    if (pathResolution.path) {
+      const overriddenPath = replaceFolder(pathResolution.path, folder);
+      return await (collection as any).create({
+        frontmatter: denormalized,
+        body,
+        path: overriddenPath,
+      }) as CreateResultLike;
+    }
+  }
+
   const firstAttempt = await (collection as any).create(input) as CreateResultLike;
   if (!firstAttempt.error || firstAttempt.error.code !== "path_required") {
-    return firstAttempt;
+    return folder && firstAttempt.path
+      ? { ...firstAttempt, path: replaceFolder(firstAttempt.path, folder) }
+      : firstAttempt;
   }
 
   const pathResolution = derivePathFromType(
@@ -74,10 +91,19 @@ export async function createTaskWithCompat(
     return firstAttempt;
   }
 
+  const resolvedPath = folder ? replaceFolder(pathResolution.path, folder) : pathResolution.path;
+
   return await (collection as any).create({
     ...input,
-    path: pathResolution.path,
+    path: resolvedPath,
   }) as CreateResultLike;
+}
+
+function replaceFolder(filePath: string, newFolder: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex === -1) return `${newFolder}/${normalized}`;
+  return `${newFolder}${normalized.substring(slashIndex)}`;
 }
 
 function getTaskTypeDef(collection: Collection): TaskTypeDefLike | undefined {
