@@ -1,12 +1,12 @@
 {
-  "name": "mdbase-tasknotes",
+  "name": "mdbase-tasknotes-jx",
   "version": "0.1.3",
   "description": "Standalone CLI for managing markdown tasks via mdbase",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/callumalpass/mdbase-tasknotes.git"
+    "url": "https://github.com/jr-xing/mdbase-tasknotes.git"
   },
   "keywords": [
     "mdbase",
@@ -18,7 +18,7 @@
     "productivity"
   ],
   "bin": {
-    "mtn": "./dist/cli.js"
+    "mtnj": "./dist/cli.js"
   },
   "files": [
     "dist"

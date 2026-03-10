@@ -87,7 +87,7 @@ export function buildFieldMapping(
       const role = def.tn_role as FieldRole;
       if (!rolesSet.has(role)) continue;
       if (roleToField[role] !== undefined) {
-        console.warn(`[mtn] Duplicate tn_role "${role}" on field "${fieldName}", ignoring.`);
+        console.warn(`[mtnj] Duplicate tn_role "${role}" on field "${fieldName}", ignoring.`);
         continue;
       }
       roleToField[role] = fieldName;

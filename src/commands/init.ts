@@ -17,7 +17,7 @@ export async function initCommand(
     }
     console.log("");
     console.log(`Collection path: ${chalk.cyan(target)}`);
-    console.log(`Create tasks with: ${chalk.cyan("mtn create \"Buy groceries tomorrow #shopping\"")}`);
+    console.log(`Create tasks with: ${chalk.cyan("mtnj create \"Buy groceries tomorrow #shopping\"")}`);
   } catch (err) {
     console.error(chalk.red("✗") + ` ${(err as Error).message}`);
     process.exit(1);
