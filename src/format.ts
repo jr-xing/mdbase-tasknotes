@@ -65,7 +65,11 @@ export function formatTask(task: TaskResult): string {
   return formatTaskForDate(task, todayString());
 }
 
-export function formatTaskForDate(task: TaskResult, date: string): string {
+export interface FormatTaskOptions {
+  hideProjects?: boolean;
+}
+
+export function formatTaskForDate(task: TaskResult, date: string, options?: FormatTaskOptions): string {
   const fm = task.frontmatter;
   const parts: string[] = [];
   const effectiveStatus = getEffectiveStatus(fm, date);
@@ -103,9 +107,11 @@ export function formatTaskForDate(task: TaskResult, date: string): string {
   }
 
   // Projects
-  const projects = extractProjectNames(fm.projects as string[] | undefined);
-  if (projects.length > 0) {
-    parts.push(chalk.blue(projects.map((p) => `+${p}`).join(" ")));
+  if (!options?.hideProjects) {
+    const projects = extractProjectNames(fm.projects as string[] | undefined);
+    if (projects.length > 0) {
+      parts.push(chalk.blue(projects.map((p) => `+${p}`).join(" ")));
+    }
   }
 
   // Time estimate

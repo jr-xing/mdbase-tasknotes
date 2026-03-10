@@ -19,6 +19,7 @@ import { statsCommand } from "./commands/stats.js";
 import { interactiveCommand } from "./commands/interactive.js";
 import { configCommand } from "./commands/config.js";
 import { skipCommand, unskipCommand } from "./commands/skip.js";
+import { treeCommand } from "./commands/tree.js";
 
 const program = new Command();
 
@@ -148,6 +149,21 @@ program
   .action((pathOrTitle: string, opts: any) => {
     const parentOpts = program.opts();
     return unskipCommand(pathOrTitle, { ...opts, path: parentOpts.path });
+  });
+
+// Tree
+program
+  .command("tree")
+  .description("Display tasks in a project/subtask hierarchy")
+  .option("-s, --status <status>", "Filter by status")
+  .option("--priority <priority>", "Filter by priority")
+  .option("-t, --tag <tag>", "Filter by tag")
+  .option("--overdue", "Show overdue tasks")
+  .option("--all", "Show all tasks including completed")
+  .option("-l, --limit <n>", "Maximum tasks to load (default 1000)")
+  .action((opts: any) => {
+    const parentOpts = program.opts();
+    return treeCommand({ ...opts, path: parentOpts.path });
   });
 
 // Search
