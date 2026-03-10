@@ -200,23 +200,30 @@ function applyMatchDefaults(
   }
 }
 
+const DEFAULT_PATH_PATTERN = "tasks/{title}.md";
+
 function derivePathFromType(
   taskType: TaskTypeDefLike | undefined,
   frontmatter: UnknownRecord,
   mapping: FieldMapping,
   now: Date,
 ): { path?: string; missingKeys?: string[]; template?: string } {
-  if (!taskType || typeof taskType.path_pattern !== "string" || taskType.path_pattern.trim().length === 0) {
+  const pattern =
+    taskType && typeof taskType.path_pattern === "string" && taskType.path_pattern.trim().length > 0
+      ? taskType.path_pattern
+      : DEFAULT_PATH_PATTERN;
+
+  if (!taskType) {
     return {};
   }
 
   const values = buildTemplateValues(frontmatter, mapping, now);
-  const renderedPattern = renderTemplate(taskType.path_pattern, values);
+  const renderedPattern = renderTemplate(pattern, values);
   if (renderedPattern.path) {
-    return { path: ensureMarkdownExt(renderedPattern.path), template: taskType.path_pattern };
+    return { path: ensureMarkdownExt(renderedPattern.path), template: pattern };
   }
   return {
-    template: taskType.path_pattern,
+    template: pattern,
     missingKeys: renderedPattern.missingKeys,
   };
 }
