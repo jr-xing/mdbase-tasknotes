@@ -30,6 +30,7 @@ interface TreeCommandOptions {
   tag?: string;
   overdue?: boolean;
   all?: boolean;
+  hideEmpty?: boolean;
   limit?: string;
 }
 
@@ -152,7 +153,17 @@ export async function treeCommand(options: TreeCommandOptions): Promise<void> {
         }
       }
 
-      // Phase 4: Render
+      // Phase 4: Load all projects to show empty ones
+      if (!options.hideEmpty) {
+        const allProjects = await loadProjects(collection);
+        for (const proj of allProjects) {
+          if (!projectGroups.has(proj)) {
+            projectGroups.set(proj, []);
+          }
+        }
+      }
+
+      // Phase 5: Render
       const sortedProjects = [...projectGroups.entries()].sort((a, b) =>
         a[0].localeCompare(b[0]),
       );
@@ -162,7 +173,11 @@ export async function treeCommand(options: TreeCommandOptions): Promise<void> {
         if (!first) console.log("");
         first = false;
         console.log(chalk.blue.bold(`+${projectName}`));
-        renderChildren(nodes, "", new Set());
+        if (nodes.length === 0) {
+          console.log(chalk.dim("    (no tasks)"));
+        } else {
+          renderChildren(nodes, "", new Set());
+        }
       }
 
       if (orphans.length > 0) {
@@ -286,4 +301,24 @@ async function loadTasks(
       }
       return { ...t, frontmatter: fm as any as TaskFrontmatter };
     });
+}
+
+async function loadProjects(collection: Collection): Promise<string[]> {
+  try {
+    const result = await collection.query({
+      types: ["project"],
+      limit: 500,
+    });
+    const projects: string[] = [];
+    for (const item of (result.results || []) as Array<{ frontmatter?: Record<string, unknown>; path: string }>) {
+      const fm = item.frontmatter || {};
+      const title = typeof fm.title === "string" && fm.title.length > 0
+        ? fm.title
+        : item.path.replace(/^.*[\\/]/, "").replace(/\.md$/, "");
+      projects.push(title);
+    }
+    return projects;
+  } catch {
+    return [];
+  }
 }

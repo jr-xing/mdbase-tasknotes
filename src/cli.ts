@@ -160,6 +160,7 @@ program
   .option("-t, --tag <tag>", "Filter by tag")
   .option("--overdue", "Show overdue tasks")
   .option("--all", "Show all tasks including completed")
+  .option("--hide-empty", "Hide projects with no tasks")
   .option("-l, --limit <n>", "Maximum tasks to load (default 1000)")
   .action((opts: any) => {
     const parentOpts = program.opts();
