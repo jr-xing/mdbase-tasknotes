@@ -10,12 +10,22 @@ Works on the same vault and `_types/task.md` schema that the [TaskNotes](https:/
 
 - **Project names with spaces** — `+[[My Project Name]]` works natively without double-wrapping wikilinks. No sed post-processing needed.
 - **`--folder` option on `create`** — control which directory the created file is saved to (e.g. `--folder projects`, `--folder tasks`).
+- **`tree` command** — hierarchical project/task/subtask display with tree-drawing characters.
+- **`type: project` support** — separate type definition for projects (`_types/project.md`), cleanly distinguishing projects from tasks.
 - **CLI command is `mtnj`** — can be installed alongside the original `mtn` without conflict.
 
 ## Install
 
 ```
 npm install -g jr-xing/mdbase-tasknotes
+```
+
+### From local clone
+
+```bash
+git clone https://github.com/jr-xing/mdbase-tasknotes.git
+cd mdbase-tasknotes
+./scripts/install-global.sh
 ```
 
 ## Quick start
@@ -42,6 +52,11 @@ mtnj list --overdue
 mtnj list --tag work --status open
 mtnj list --json
 
+# View project/task hierarchy
+mtnj tree
+mtnj tree --tag source/yale
+mtnj tree --all  # include completed tasks
+
 # Complete a task
 mtnj complete "Buy groceries"
 
@@ -59,6 +74,7 @@ mtnj timer log --period today
 | `mtnj init [path]` | Initialize a new collection with `mdbase.yaml` and `_types/task.md` |
 | `mtnj create <text...>` | Create a task from natural language (`--folder <dir>` to control output) |
 | `mtnj list` | List tasks with filters (`--status`, `--priority`, `--tag`, `--due`, `--overdue`, `--where`, `--on`, `--json`) |
+| `mtnj tree` | Display tasks in a project/subtask hierarchy (`--status`, `--priority`, `--tag`, `--overdue`, `--all`) |
 | `mtnj show <task>` | Show full task detail (`--on YYYY-MM-DD` for recurring instance state) |
 | `mtnj complete <task>` | Mark a task as done (`--date YYYY-MM-DD` for recurring instance completion) |
 | `mtnj update <task>` | Update fields (`--status`, `--priority`, `--due`, `--title`, `--add-tag`, `--remove-tag`) |
@@ -74,6 +90,26 @@ mtnj timer log --period today
 | `mtnj config` | Manage CLI configuration (`--set`, `--get`, `--list`) |
 
 Tasks can be referenced by file path or title. Titles are matched exactly first, then by substring.
+
+## Tree view
+
+The `tree` command displays tasks organized by project, with subtask nesting:
+
+```
++PIS score
+├── ☐ Yale Cardio Onc Strain
+│   ├── ◐ [high] fix the strain issue...  due:2026-03-08 ~3h
+│   ├── ☐ Deploy Block Matching...  due:2026-03-15
+│   └── ☐ Deploy DeepStrain...  due:2026-03-15
+├── ☐ Yale Cardio Onc T1 data
+│   └── ☐ T1 Myocardium Labeling  scheduled:2026-03-15
+└── ☐ Yale Cardio Onc T2 data
+
+Orphan tasks
+└── ☐ Make a plan for the career plan
+```
+
+Subtask relationships are determined by the `projects` field: if a task's `projects` wikilink points to another task (not a project), it becomes a subtask. Tasks with no project affiliation appear under "Orphan tasks".
 
 ## Natural language parsing
 
