@@ -20,6 +20,7 @@ import { interactiveCommand } from "./commands/interactive.js";
 import { configCommand } from "./commands/config.js";
 import { skipCommand, unskipCommand } from "./commands/skip.js";
 import { treeCommand } from "./commands/tree.js";
+import { organizeCommand } from "./commands/organize.js";
 
 const program = new Command();
 
@@ -165,6 +166,17 @@ program
   .action((opts: any) => {
     const parentOpts = program.opts();
     return treeCommand({ ...opts, path: parentOpts.path });
+  });
+
+// Organize
+program
+  .command("organize")
+  .description("Organize tasks into project folders based on hierarchy")
+  .option("--apply", "Execute the moves (default is dry-run)")
+  .option("--orphans <mode>", "Handle orphan tasks: skip (default) or unassigned")
+  .action((opts: any) => {
+    const parentOpts = program.opts();
+    return organizeCommand({ ...opts, path: parentOpts.path });
   });
 
 // Search

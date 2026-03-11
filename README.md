@@ -11,6 +11,7 @@ Works on the same vault and `_types/task.md` schema that the [TaskNotes](https:/
 - **Project names with spaces** — `+[[My Project Name]]` works natively without double-wrapping wikilinks. No sed post-processing needed.
 - **`--folder` option on `create`** — control which directory the created file is saved to (e.g. `--folder projects`, `--folder tasks`).
 - **`tree` command** — hierarchical project/task/subtask display with tree-drawing characters.
+- **`organize` command** — reorganize task files into project folders based on hierarchy (dry-run by default, `--apply` to execute).
 - **`type: project` support** — separate type definition for projects (`_types/project.md`), cleanly distinguishing projects from tasks.
 - **CLI command is `mtnj`** — can be installed alongside the original `mtn` without conflict.
 
@@ -75,6 +76,7 @@ mtnj timer log --period today
 | `mtnj create <text...>` | Create a task from natural language (`--folder <dir>` to control output) |
 | `mtnj list` | List tasks with filters (`--status`, `--priority`, `--tag`, `--due`, `--overdue`, `--where`, `--on`, `--json`) |
 | `mtnj tree` | Display tasks in a project/subtask hierarchy (`--status`, `--priority`, `--tag`, `--overdue`, `--all`) |
+| `mtnj organize` | Organize tasks into project folders based on hierarchy (`--apply`, `--orphans skip\|unassigned`) |
 | `mtnj show <task>` | Show full task detail (`--on YYYY-MM-DD` for recurring instance state) |
 | `mtnj complete <task>` | Mark a task as done (`--date YYYY-MM-DD` for recurring instance completion) |
 | `mtnj update <task>` | Update fields (`--status`, `--priority`, `--due`, `--title`, `--add-tag`, `--remove-tag`) |
@@ -110,6 +112,39 @@ Orphan tasks
 ```
 
 Subtask relationships are determined by the `projects` field: if a task's `projects` wikilink points to another task (not a project), it becomes a subtask. Tasks with no project affiliation appear under "Orphan tasks".
+
+## Organize
+
+The `organize` command moves task files into project folders to match the logical hierarchy:
+
+```bash
+# Preview planned moves (dry-run, default)
+mtnj organize
+
+# Execute the moves
+mtnj organize --apply
+
+# Also move orphan tasks to _unassigned/
+mtnj organize --apply --orphans unassigned
+```
+
+Result:
+
+```
+projects/
+  2026-03-07-PROJECT PIS score/
+    2026-03-07-PROJECT PIS score.md
+    2026-03-07-TASK Yale Cardio Onc Strain/
+      2026-03-07-TASK Yale Cardio Onc Strain.md
+      2026-03-08-TASK Deploy Block Matching....md
+      2026-03-08-TASK Deploy DeepStrain....md
+    2026-03-07-TASK Yale Cardio Onc T1 data/
+      2026-03-07-TASK Yale Cardio Onc T1 data.md
+      2026-03-07-TASK T1 Myocardium Labeling.md
+    2026-03-05-TASK Check status of fetal brain dataset.md
+```
+
+Only tasks with children get their own subfolder; leaf tasks stay as plain files. Nesting depth follows the parent chain with no limit. The command uses `collection.rename()` to update all wikilinks automatically.
 
 ## Natural language parsing
 
