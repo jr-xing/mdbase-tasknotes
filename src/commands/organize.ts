@@ -125,12 +125,11 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
       const stem = (filePath: string) => basename(filePath, ".md");
 
       // Build a map of project path -> project folder
+      // Always root at "projects/" regardless of where the project note currently lives
       const projectFolderMap = new Map<string, string>();
       for (const p of projects) {
         const projStem = stem(p.path);
-        const projDir = dirname(p.path);
-        // Project folder: same parent dir / project stem /
-        const folder = normalizeSlashes(join(projDir, projStem));
+        const folder = normalizeSlashes(join("projects", projStem));
         projectFolderMap.set(p.path, folder);
       }
 
