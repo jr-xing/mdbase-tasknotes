@@ -12,7 +12,9 @@ Works on the same vault and `_types/task.md` schema that the [TaskNotes](https:/
 - **`--folder` option on `create`** — control which directory the created file is saved to (e.g. `--folder projects`, `--folder tasks`).
 - **`tree` command** — hierarchical project/task/subtask display with tree-drawing characters.
 - **`organize` command** — reorganize task files into project folders based on hierarchy (dry-run by default, `--apply` to execute).
+- **`organize --attachments`** — co-locate binary attachments and owned notes (`task-card`, `prompt-note`) with the tasks that reference them, using LCA placement for shared files.
 - **`type: project` support** — separate type definition for projects (`_types/project.md`), cleanly distinguishing projects from tasks.
+- **`task-card` and `prompt-note` type support** — `mtnj init` creates type definitions and starter folders for these owned note types.
 - **CLI command is `mtnj`** — can be installed alongside the original `mtn` without conflict.
 
 ## Install
@@ -76,7 +78,7 @@ mtnj timer log --period today
 | `mtnj create <text...>` | Create a task from natural language (`--folder <dir>` to control output) |
 | `mtnj list` | List tasks with filters (`--status`, `--priority`, `--tag`, `--due`, `--overdue`, `--where`, `--on`, `--json`) |
 | `mtnj tree` | Display tasks in a project/subtask hierarchy (`--status`, `--priority`, `--tag`, `--overdue`, `--all`) |
-| `mtnj organize` | Organize tasks into project folders based on hierarchy (`--apply`, `--orphans skip\|unassigned`) |
+| `mtnj organize` | Organize tasks into project folders based on hierarchy (`--apply`, `--orphans skip\|unassigned`, `--attachments`) |
 | `mtnj show <task>` | Show full task detail (`--on YYYY-MM-DD` for recurring instance state) |
 | `mtnj complete <task>` | Mark a task as done (`--date YYYY-MM-DD` for recurring instance completion) |
 | `mtnj update <task>` | Update fields (`--status`, `--priority`, `--due`, `--title`, `--add-tag`, `--remove-tag`) |
@@ -145,6 +147,62 @@ projects/
 ```
 
 Only tasks with children get their own subfolder; leaf tasks stay as plain files. Nesting depth follows the parent chain with no limit. The command uses `collection.rename()` to update all wikilinks automatically.
+
+### Organizing attachments and owned notes
+
+Add `--attachments` to also co-locate binary files and owned note types with the tasks that reference them:
+
+```bash
+# Preview (dry-run)
+mtnj organize --attachments
+
+# Execute
+mtnj organize --attachments --apply
+
+# Combine with standard organize
+mtnj organize --attachments --apply --orphans unassigned
+```
+
+**Binary attachments** (PDFs, images, spreadsheets, etc.) referenced in note bodies are moved into an `assets/` folder. Placement follows the **Lowest Common Ancestor** rule: an attachment used by exactly one task goes into that task's own subfolder; one shared by multiple tasks in the same project goes into the project folder; cross-project attachments float up further.
+
+```
+projects/
+  my-project/
+    my-project.md
+    task-a/                       ← promoted (now owns assets)
+      task-a.md
+      my-card.md                  ← task-card moved here
+      assets/
+        photo.png                 ← sole attachment of task-a
+    assets/
+      report.pdf                  ← shared by task-a and task-b
+```
+
+**Owned notes** (`task-card` and `prompt-note` types) are moved next to the task that references them via `collection.rename(update_refs: true)`, so all wikilinks update automatically.
+
+**Note promotion**: a flat task note (`task.md`) that becomes the sole owner of attachments is automatically promoted to its own subfolder (`task/task.md`) to make room for `assets/`.
+
+Markdown-style link paths in note bodies are updated after binary moves. Wikilinks (`![[file.pdf]]`) are left as-is — Obsidian resolves them by filename regardless of location.
+
+#### Setting up owned note types
+
+`mtnj init` now creates `_types/task-card.md` and `_types/prompt-note.md` along with starter folders `task-cards/` and `prompts/`. If you initialized your collection before this version, create the type files manually:
+
+```bash
+# _types/task-card.md
+---
+name: task-card
+strict: false
+match:
+  path_glob: "task-cards/**/*.md"
+fields:
+  title:
+    type: string
+    required: true
+---
+```
+
+Notes must have `type: task-card` or `type: prompt-note` in their frontmatter to be treated as owned notes by `organize --attachments`.
 
 ## Natural language parsing
 

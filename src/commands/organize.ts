@@ -10,11 +10,18 @@ import {
 import type { TaskResult } from "../types.js";
 import type { Collection } from "@callumalpass/mdbase";
 import type { InternalResolverContext } from "../project-resolver.js";
+import {
+  scanAttachments,
+  planAttachmentMoves,
+  printAttachmentDryRun,
+  executeAttachmentMoves,
+} from "./organize-attachments.js";
 
 interface OrganizeOptions {
   path?: string;
   apply?: boolean;
   orphans?: string; // "skip" (default) | "unassigned"
+  attachments?: boolean;
 }
 
 interface PlannedMove {
@@ -175,9 +182,14 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
           }
         }
 
-        // The task itself: if it has children, it goes into its own folder
+        // The task itself: if it has children, it goes into its own folder.
+        // With --attachments, also preserve notes already in their own subfolder
+        // (they may have been promoted by a prior `organize --attachments` run).
         const hasChildren = (childrenOf.get(task.path)?.size ?? 0) > 0;
-        if (hasChildren) {
+        const alreadyInOwnSubfolder =
+          options.attachments === true &&
+          basename(dirname(task.path)) === stem(task.path);
+        if (hasChildren || alreadyInOwnSubfolder) {
           const taskFolder = normalizeSlashes(join(currentDir, stem(task.path)));
           desiredPaths.set(task.path, normalizeSlashes(join(taskFolder, basename(task.path))));
         } else {
@@ -223,8 +235,29 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
         }
       }
 
-      // Phase 6: Output
-      if (moves.length === 0) {
+      // Phase 6: Attachment scan + plan (if requested)
+      const collectionRoot = (collection as any).rootPath || (collection as any).root || "";
+
+      let attachmentPlan = null;
+      if (options.attachments) {
+        const scanResult = await scanAttachments(
+          collection,
+          collectionRoot,
+          desiredPaths,
+          resolverContext,
+        );
+        attachmentPlan = planAttachmentMoves(scanResult, desiredPaths);
+      }
+
+      // Phase 7: Output
+      const noteMovesEmpty = moves.length === 0;
+      const attachMovesEmpty =
+        !attachmentPlan ||
+        (attachmentPlan.binaryMoves.length === 0 &&
+          attachmentPlan.ownedNoteMoves.length === 0 &&
+          attachmentPlan.promotionMoves.length === 0);
+
+      if (noteMovesEmpty && attachMovesEmpty) {
         console.log(chalk.green("All files are already organized."));
         console.log(chalk.dim(`  ${alreadyOrganized} files in correct location`));
         if (orphanPaths.length > 0) {
@@ -235,40 +268,45 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
 
       if (!options.apply) {
         // Dry-run output
-        console.log(chalk.bold("Organize plan (dry run):\n"));
+        if (moves.length > 0) {
+          console.log(chalk.bold("Organize plan (dry run):\n"));
 
-        // Group moves by project
-        const movesByProject = new Map<string, PlannedMove[]>();
-        for (const move of moves) {
-          // Determine project from the target path
-          const pathParts = move.to.split("/");
-          const projectName = pathParts.length >= 2 ? pathParts[1] : "_other";
-          const group = movesByProject.get(projectName) || [];
-          group.push(move);
-          movesByProject.set(projectName, group);
-        }
-
-        for (const [projectName, projectMoves] of [...movesByProject.entries()].sort()) {
-          console.log(chalk.blue.bold(`[${projectName}]`) + chalk.dim(` ${projectMoves.length} move(s)`));
-          for (const move of projectMoves) {
-            console.log(chalk.dim("  ") + move.from);
-            console.log(chalk.dim("    → ") + chalk.green(move.to));
+          // Group moves by project
+          const movesByProject = new Map<string, PlannedMove[]>();
+          for (const move of moves) {
+            const pathParts = move.to.split("/");
+            const projectName = pathParts.length >= 2 ? pathParts[1] : "_other";
+            const group = movesByProject.get(projectName) || [];
+            group.push(move);
+            movesByProject.set(projectName, group);
           }
-          console.log();
-        }
 
-        console.log(chalk.bold("Summary:"));
-        console.log(`  ${chalk.yellow(String(moves.length))} moves planned`);
-        console.log(`  ${alreadyOrganized} already organized`);
-        if (orphanPaths.length > 0) {
-          console.log(`  ${orphanPaths.length} orphan(s) skipped`);
-        }
-
-        if (warnings.length > 0) {
-          console.log(chalk.yellow("\nWarnings:"));
-          for (const w of warnings) {
-            console.log(chalk.yellow(`  ⚠ ${w}`));
+          for (const [projectName, projectMoves] of [...movesByProject.entries()].sort()) {
+            console.log(chalk.blue.bold(`[${projectName}]`) + chalk.dim(` ${projectMoves.length} move(s)`));
+            for (const move of projectMoves) {
+              console.log(chalk.dim("  ") + move.from);
+              console.log(chalk.dim("    → ") + chalk.green(move.to));
+            }
+            console.log();
           }
+
+          console.log(chalk.bold("Summary:"));
+          console.log(`  ${chalk.yellow(String(moves.length))} moves planned`);
+          console.log(`  ${alreadyOrganized} already organized`);
+          if (orphanPaths.length > 0) {
+            console.log(`  ${orphanPaths.length} orphan(s) skipped`);
+          }
+
+          if (warnings.length > 0) {
+            console.log(chalk.yellow("\nWarnings:"));
+            for (const w of warnings) {
+              console.log(chalk.yellow(`  ⚠ ${w}`));
+            }
+          }
+        }
+
+        if (attachmentPlan) {
+          printAttachmentDryRun(attachmentPlan);
         }
 
         console.log(chalk.dim("\nRun with --apply to execute."));
@@ -276,17 +314,14 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
         // Apply mode
         console.log(chalk.bold("Organizing files...\n"));
 
-        const collectionRoot = (collection as any).rootPath || (collection as any).root || "";
         let succeeded = 0;
         let failed = 0;
 
         for (const move of moves) {
           try {
-            // Create target directory
             const targetDir = dirname(join(collectionRoot, move.to));
             mkdirSync(targetDir, { recursive: true });
 
-            // Move file and update references
             await collection.rename({
               from: move.from,
               to: move.to,
@@ -301,11 +336,27 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
           }
         }
 
+        if (attachmentPlan) {
+          const { succeeded: as, failed: af } = await executeAttachmentMoves(
+            collection,
+            collectionRoot,
+            attachmentPlan,
+          );
+          succeeded += as;
+          failed += af;
+        }
+
         console.log(chalk.bold(`\nDone: ${succeeded} moved, ${failed} failed.`));
 
         if (warnings.length > 0) {
           console.log(chalk.yellow("\nWarnings:"));
           for (const w of warnings) {
+            console.log(chalk.yellow(`  ⚠ ${w}`));
+          }
+        }
+        if (attachmentPlan?.warnings.length) {
+          console.log(chalk.yellow("\nAttachment warnings:"));
+          for (const w of attachmentPlan.warnings) {
             console.log(chalk.yellow(`  ⚠ ${w}`));
           }
         }

@@ -174,6 +174,7 @@ program
   .description("Organize tasks into project folders based on hierarchy")
   .option("--apply", "Execute the moves (default is dry-run)")
   .option("--orphans <mode>", "Handle orphan tasks: skip (default) or unassigned")
+  .option("--attachments", "Also organize attachments and owned notes (task-card, prompt-note)")
   .action((opts: any) => {
     const parentOpts = program.opts();
     return organizeCommand({ ...opts, path: parentOpts.path });

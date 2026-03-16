@@ -169,6 +169,54 @@ export function buildTaskTypeDef(opts: InitOptions = {}): string {
   return lines.join("\n");
 }
 
+export function buildTaskCardTypeDef(): string {
+  return [
+    "---",
+    "name: task-card",
+    "description: A card associated with a task, managed by mdbase-tasknotes.",
+    "strict: false",
+    "",
+    "match:",
+    '  path_glob: "task-cards/**/*.md"',
+    "",
+    "fields:",
+    "  title:",
+    "    type: string",
+    "    required: true",
+    "---",
+    "",
+    "# Task Card",
+    "",
+    "Type definition for task-card notes managed by mdbase-tasknotes.",
+    "After running `mtnj organize --attachments`, cards move into task subfolders.",
+    "",
+  ].join("\n");
+}
+
+export function buildPromptNoteTypeDef(): string {
+  return [
+    "---",
+    "name: prompt-note",
+    "description: A prompt note managed by mdbase-tasknotes.",
+    "strict: false",
+    "",
+    "match:",
+    '  path_glob: "prompts/**/*.md"',
+    "",
+    "fields:",
+    "  title:",
+    "    type: string",
+    "    required: true",
+    "---",
+    "",
+    "# Prompt Note",
+    "",
+    "Type definition for prompt notes managed by mdbase-tasknotes.",
+    "After running `mtnj organize --attachments`, prompts move into task subfolders.",
+    "",
+  ].join("\n");
+}
+
 export async function initCollection(targetPath: string): Promise<{ created: string[] }> {
   const absPath = path.resolve(targetPath);
   const typesDir = path.join(absPath, "_types");
@@ -199,6 +247,18 @@ export async function initCollection(targetPath: string): Promise<{ created: str
   fs.writeFileSync(taskTypeDefPath, buildTaskTypeDef());
   created.push("_types/task.md");
 
+  // Write _types/task-card.md and _types/prompt-note.md
+  fs.writeFileSync(path.join(typesDir, "task-card.md"), buildTaskCardTypeDef());
+  created.push("_types/task-card.md");
+  fs.writeFileSync(path.join(typesDir, "prompt-note.md"), buildPromptNoteTypeDef());
+  created.push("_types/prompt-note.md");
+
+  // Create starter folders for owned note types
+  fs.mkdirSync(path.join(absPath, "task-cards"), { recursive: true });
+  created.push("task-cards/");
+  fs.mkdirSync(path.join(absPath, "prompts"), { recursive: true });
+  created.push("prompts/");
+
   created.push("tasks/");
 
   return { created };
@@ -215,6 +275,8 @@ export async function initCollectionForce(targetPath: string): Promise<{ created
   fs.mkdirSync(absPath, { recursive: true });
   fs.mkdirSync(typesDir, { recursive: true });
   fs.mkdirSync(path.join(absPath, "tasks"), { recursive: true });
+  fs.mkdirSync(path.join(absPath, "task-cards"), { recursive: true });
+  fs.mkdirSync(path.join(absPath, "prompts"), { recursive: true });
 
   fs.writeFileSync(mdbaseYamlPath, buildMdbaseYaml());
   created.push("mdbase.yaml");
@@ -222,7 +284,14 @@ export async function initCollectionForce(targetPath: string): Promise<{ created
   fs.writeFileSync(taskTypeDefPath, buildTaskTypeDef());
   created.push("_types/task.md");
 
+  fs.writeFileSync(path.join(typesDir, "task-card.md"), buildTaskCardTypeDef());
+  created.push("_types/task-card.md");
+  fs.writeFileSync(path.join(typesDir, "prompt-note.md"), buildPromptNoteTypeDef());
+  created.push("_types/prompt-note.md");
+
   created.push("tasks/");
+  created.push("task-cards/");
+  created.push("prompts/");
 
   return { created };
 }
