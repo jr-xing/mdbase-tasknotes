@@ -314,10 +314,42 @@ export function planAttachmentMoves(
     promotionMoves.push({ from: desiredNotePath, to: promotedTo });
   }
 
-  // ---- Binary moves ----
-  for (const [binaryPath, refsSet] of scanResult.binaryRefs) {
+  // ---- First: Compute owned note target paths ----
+  // This ensures binary LCAs use the post-move locations of owned notes
+  const ownedNoteTargets = new Map<string, string>(); // current path → target path
+
+  for (const [ownedPath, refsSet] of scanResult.ownedNoteRefs) {
     const refs = [...refsSet];
     const virtualDirs = refs.map(noteVirtualDir);
+    const lca = computeLCAOfDirs(virtualDirs);
+    const fname = basename(ownedPath);
+    const noteType = scanResult.ownedNoteTypes.get(ownedPath) ?? "";
+    const fallbackFolder = OWNED_NOTE_FALLBACK_FOLDER[noteType];
+    const desiredTo =
+      lca === "." && fallbackFolder
+        ? `${fallbackFolder}/${fname}`
+        : lca === "."
+          ? fname
+          : `${lca}/${fname}`;
+    const normalized = ownedPath.replace(/\\/g, "/");
+
+    if (normalized !== desiredTo) {
+      const organizeTarget = desiredPaths.get(normalized)?.replace(/\\/g, "/");
+      if (organizeTarget !== desiredTo) {
+        ownedNoteTargets.set(normalized, desiredTo);
+      }
+    }
+  }
+
+  // ---- Binary moves (using owned note target paths) ----
+  for (const [binaryPath, refsSet] of scanResult.binaryRefs) {
+    const refs = [...refsSet];
+
+    // Use owned note target paths if available, so binary LCAs are computed
+    // based on where owned notes will be AFTER they're moved
+    const effectiveRefs = refs.map(ref => ownedNoteTargets.get(ref) ?? ref);
+
+    const virtualDirs = effectiveRefs.map(noteVirtualDir);
     const lca = computeLCAOfDirs(virtualDirs);
     const fname = basename(binaryPath);
     const desiredTo = lca === "." ? `assets/${fname}` : `${lca}/assets/${fname}`;
@@ -332,7 +364,7 @@ export function planAttachmentMoves(
     plannedBinaryTargets.set(desiredTo, normalized);
 
     // Promote any referencing note that would be the sole "folder owner"
-    for (const ref of refs) {
+    for (const ref of effectiveRefs) {
       maybePromote(ref);
     }
 
