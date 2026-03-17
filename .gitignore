@@ -3,3 +3,4 @@ dist/
 /.ops
 /_types
 /mdbase.yaml
+.claude/
