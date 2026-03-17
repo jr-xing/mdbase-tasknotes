@@ -183,11 +183,10 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
         }
 
         // The task itself: if it has children, it goes into its own folder.
-        // With --attachments, also preserve notes already in their own subfolder
-        // (they may have been promoted by a prior `organize --attachments` run).
+        // Also preserve notes already in their own subfolder — they may have
+        // been promoted by a prior `organize --attachments` run.
         const hasChildren = (childrenOf.get(task.path)?.size ?? 0) > 0;
         const alreadyInOwnSubfolder =
-          options.attachments === true &&
           basename(dirname(task.path)) === stem(task.path);
         if (hasChildren || alreadyInOwnSubfolder) {
           const taskFolder = normalizeSlashes(join(currentDir, stem(task.path)));
