@@ -303,6 +303,12 @@ export function planAttachmentMoves(
   // Target path → source path (for binary collision detection)
   const plannedBinaryTargets = new Map<string, string>();
 
+  // Only notes managed by the organize command (tasks, projects) should
+  // influence where attachments are placed. Notes like copilot conversations
+  // that have no type frontmatter are not managed and must not pull assets
+  // into their folder hierarchy or trigger note promotions.
+  const participantRefPaths = new Set(desiredPaths.values());
+
   function maybePromote(desiredNotePath: string): void {
     if (promotedPaths.has(desiredNotePath)) return;
     const actualDir = dirname(desiredNotePath).replace(/\\/g, "/");
@@ -320,7 +326,9 @@ export function planAttachmentMoves(
 
   for (const [ownedPath, refsSet] of scanResult.ownedNoteRefs) {
     const refs = [...refsSet];
-    const virtualDirs = refs.map(noteVirtualDir);
+    const participantRefs = refs.filter(r => participantRefPaths.has(r));
+    if (participantRefs.length === 0) continue;
+    const virtualDirs = participantRefs.map(noteVirtualDir);
     const lca = computeLCAOfDirs(virtualDirs);
     const fname = basename(ownedPath);
     const noteType = scanResult.ownedNoteTypes.get(ownedPath) ?? "";
@@ -349,7 +357,13 @@ export function planAttachmentMoves(
     // based on where owned notes will be AFTER they're moved
     const effectiveRefs = refs.map(ref => ownedNoteTargets.get(ref) ?? ref);
 
-    const virtualDirs = effectiveRefs.map(noteVirtualDir);
+    // Only participant (managed) notes determine where a binary is placed.
+    // Non-participant notes (e.g. copilot conversations) may link to assets
+    // but must not pull those assets into their folder hierarchy.
+    const participantEffectiveRefs = effectiveRefs.filter((_, i) => participantRefPaths.has(refs[i]));
+    if (participantEffectiveRefs.length === 0) continue;
+
+    const virtualDirs = participantEffectiveRefs.map(noteVirtualDir);
     const lca = computeLCAOfDirs(virtualDirs);
     const fname = basename(binaryPath);
     const desiredTo = lca === "." ? `assets/${fname}` : `${lca}/assets/${fname}`;
@@ -363,18 +377,21 @@ export function planAttachmentMoves(
     }
     plannedBinaryTargets.set(desiredTo, normalized);
 
-    // Promote any referencing note that would be the sole "folder owner"
-    for (const ref of effectiveRefs) {
+    // Promote only participant referencing notes
+    for (const ref of participantEffectiveRefs) {
       maybePromote(ref);
     }
 
+    // Keep all refs (including non-participants) for display and link updating
     binaryMoves.push({ from: normalized, to: desiredTo, referencingNotes: refs });
   }
 
   // ---- Owned note moves ----
   for (const [ownedPath, refsSet] of scanResult.ownedNoteRefs) {
     const refs = [...refsSet];
-    const virtualDirs = refs.map(noteVirtualDir);
+    const participantRefs = refs.filter(r => participantRefPaths.has(r));
+    if (participantRefs.length === 0) continue;
+    const virtualDirs = participantRefs.map(noteVirtualDir);
     const lca = computeLCAOfDirs(virtualDirs);
     const fname = basename(ownedPath);
     const noteType = scanResult.ownedNoteTypes.get(ownedPath) ?? "";
@@ -395,7 +412,7 @@ export function planAttachmentMoves(
     const organizeTarget = desiredPaths.get(normalized)?.replace(/\\/g, "/");
     if (organizeTarget === desiredTo) continue;
 
-    for (const ref of refs) {
+    for (const ref of participantRefs) {
       maybePromote(ref);
     }
 
