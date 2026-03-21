@@ -16,12 +16,13 @@ import type { InternalResolverContext } from "../project-resolver.js";
 // Constants
 // ============================================================
 
-const OWNED_NOTE_TYPES = new Set(["task-card", "prompt-note"]);
+const OWNED_NOTE_TYPES = new Set(["task-card", "prompt-note", "copilot-conversation"]);
 
 /** Fallback home folder when an owned note's LCA is the collection root. */
 const OWNED_NOTE_FALLBACK_FOLDER: Record<string, string> = {
   "task-card": "task-cards",
   "prompt-note": "prompts",
+  "copilot-conversation": "copilot-conversations",
 };
 
 // ============================================================

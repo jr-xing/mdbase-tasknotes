@@ -217,6 +217,40 @@ export function buildPromptNoteTypeDef(): string {
   ].join("\n");
 }
 
+export function buildCopilotConversationTypeDef(): string {
+  return [
+    "---",
+    "name: copilot-conversation",
+    "description: A copilot conversation note managed by mdbase-tasknotes.",
+    "strict: false",
+    "",
+    "match:",
+    '  path_glob: "copilot-conversations/**/*.md"',
+    "",
+    "fields:",
+    "  topic:",
+    "    type: string",
+    "    required: false",
+    "  epoch:",
+    "    type: integer",
+    "    required: false",
+    "  modelKey:",
+    "    type: string",
+    "    required: false",
+    "  tags:",
+    "    type: list",
+    "    items:",
+    "      type: string",
+    "---",
+    "",
+    "# Copilot Conversation",
+    "",
+    "Type definition for copilot conversation notes managed by mdbase-tasknotes.",
+    "After running `mtnj organize --attachments`, conversations move into task subfolders.",
+    "",
+  ].join("\n");
+}
+
 export async function initCollection(targetPath: string): Promise<{ created: string[] }> {
   const absPath = path.resolve(targetPath);
   const typesDir = path.join(absPath, "_types");
@@ -252,12 +286,16 @@ export async function initCollection(targetPath: string): Promise<{ created: str
   created.push("_types/task-card.md");
   fs.writeFileSync(path.join(typesDir, "prompt-note.md"), buildPromptNoteTypeDef());
   created.push("_types/prompt-note.md");
+  fs.writeFileSync(path.join(typesDir, "copilot-conversation.md"), buildCopilotConversationTypeDef());
+  created.push("_types/copilot-conversation.md");
 
   // Create starter folders for owned note types
   fs.mkdirSync(path.join(absPath, "task-cards"), { recursive: true });
   created.push("task-cards/");
   fs.mkdirSync(path.join(absPath, "prompts"), { recursive: true });
   created.push("prompts/");
+  fs.mkdirSync(path.join(absPath, "copilot-conversations"), { recursive: true });
+  created.push("copilot-conversations/");
 
   created.push("tasks/");
 
@@ -277,6 +315,7 @@ export async function initCollectionForce(targetPath: string): Promise<{ created
   fs.mkdirSync(path.join(absPath, "tasks"), { recursive: true });
   fs.mkdirSync(path.join(absPath, "task-cards"), { recursive: true });
   fs.mkdirSync(path.join(absPath, "prompts"), { recursive: true });
+  fs.mkdirSync(path.join(absPath, "copilot-conversations"), { recursive: true });
 
   fs.writeFileSync(mdbaseYamlPath, buildMdbaseYaml());
   created.push("mdbase.yaml");
@@ -288,10 +327,13 @@ export async function initCollectionForce(targetPath: string): Promise<{ created
   created.push("_types/task-card.md");
   fs.writeFileSync(path.join(typesDir, "prompt-note.md"), buildPromptNoteTypeDef());
   created.push("_types/prompt-note.md");
+  fs.writeFileSync(path.join(typesDir, "copilot-conversation.md"), buildCopilotConversationTypeDef());
+  created.push("_types/copilot-conversation.md");
 
   created.push("tasks/");
   created.push("task-cards/");
   created.push("prompts/");
+  created.push("copilot-conversations/");
 
   return { created };
 }
