@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { resolveUserPath } from "./config.js";
 
 export interface InitOptions {
   tasksFolder?: string;
@@ -130,7 +131,6 @@ export function buildTaskTypeDef(opts: InitOptions = {}): string {
   lines.push("  recurrenceAnchor:");
   lines.push("    type: enum");
   lines.push("    values: [scheduled, completion]");
-  lines.push("    default: scheduled");
   lines.push("    tn_role: recurrenceAnchor");
   lines.push("  completeInstances:");
   lines.push("    type: list");
@@ -252,7 +252,7 @@ export function buildCopilotConversationTypeDef(): string {
 }
 
 export async function initCollection(targetPath: string): Promise<{ created: string[] }> {
-  const absPath = path.resolve(targetPath);
+  const absPath = resolveUserPath(targetPath);
   const typesDir = path.join(absPath, "_types");
   const mdbaseYamlPath = path.join(absPath, "mdbase.yaml");
   const taskTypeDefPath = path.join(typesDir, "task.md");
@@ -303,7 +303,7 @@ export async function initCollection(targetPath: string): Promise<{ created: str
 }
 
 export async function initCollectionForce(targetPath: string): Promise<{ created: string[] }> {
-  const absPath = path.resolve(targetPath);
+  const absPath = resolveUserPath(targetPath);
   const typesDir = path.join(absPath, "_types");
   const mdbaseYamlPath = path.join(absPath, "mdbase.yaml");
   const taskTypeDefPath = path.join(typesDir, "task.md");

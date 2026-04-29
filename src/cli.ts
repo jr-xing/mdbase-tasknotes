@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { createCommand } from "./commands/create.js";
@@ -23,11 +24,12 @@ import { treeCommand } from "./commands/tree.js";
 import { organizeCommand } from "./commands/organize.js";
 
 const program = new Command();
+const cliVersion = readPackageVersion();
 
 program
   .name("mtnj")
   .description("Standalone CLI for managing markdown tasks via mdbase")
-  .version("0.1.2")
+  .version(cliVersion)
   .option("-p, --path <path>", "Path to mdbase collection");
 
 // Init
@@ -291,6 +293,15 @@ program
 // Helper for collecting repeated options
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
+}
+
+function readPackageVersion(): string {
+  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const pkg = JSON.parse(raw) as { version?: unknown };
+  if (typeof pkg.version !== "string" || pkg.version.trim().length === 0) {
+    throw new Error("Package version is missing from package.json");
+  }
+  return pkg.version;
 }
 
 program.parse();
