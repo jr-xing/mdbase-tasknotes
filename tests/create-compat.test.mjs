@@ -18,6 +18,7 @@ function writeCollection(root, taskTypeContent) {
 function currentDateParts() {
   const now = new Date();
   return {
+    date: [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-"),
     year: String(now.getFullYear()),
     month: String(now.getMonth() + 1).padStart(2, "0"),
     monthNameShort: now.toLocaleString("en-US", { month: "short" }),
@@ -62,7 +63,7 @@ test("create: falls back to templated path_pattern using TaskNotes-style variabl
   assert.match(output, /Task created/);
 
   const parts = currentDateParts();
-  const expectedRelativePath = `calendar/${parts.year}/${parts.month}-${parts.monthNameShort}/ship-launch-plan.md`;
+  const expectedRelativePath = `calendar/${parts.year}/${parts.month}-${parts.monthNameShort}/${parts.date}-T-ship-launch-plan.md`;
   assert.ok(
     existsSync(join(collectionPath, expectedRelativePath)),
     `Expected file to exist at ${expectedRelativePath}`,
@@ -109,7 +110,7 @@ test("create: applies match.where defaults and required timestamps for TaskNotes
   assert.match(output, /Task created/);
 
   const parts = currentDateParts();
-  const expectedRelativePath = `tasks/${parts.year}/budget-review.md`;
+  const expectedRelativePath = `tasks/${parts.year}/${parts.date}-T-budget-review.md`;
   assert.ok(
     existsSync(join(collectionPath, expectedRelativePath)),
     `Expected file to exist at ${expectedRelativePath}`,
@@ -165,7 +166,7 @@ test("create: supports zettel-style path_pattern placeholders via mtn compatibil
   assert.ok(existsSync(join(collectionPath, createdRelativePath)), createdRelativePath);
 
   const basename = createdRelativePath.split("/").pop() || "";
-  assert.match(basename, /^\d{6}[0-9a-z]+\.md$/);
+  assert.equal(basename, `${parts.date}-T-zettel-compatibility-check.md`);
   assert.ok(existsSync(expectedDir));
 });
 

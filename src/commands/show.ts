@@ -16,7 +16,8 @@ export async function showCommand(
 
       if (result.error) {
         showError(`Failed to read task: ${result.error.message}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const fm = normalizeFrontmatter(result.frontmatter as Record<string, unknown>, mapping);
@@ -35,6 +36,6 @@ export async function showCommand(
     }, options.path);
   } catch (err) {
     showError((err as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

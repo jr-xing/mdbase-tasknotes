@@ -1,18 +1,19 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { CLIConfig } from "./types.js";
+import type { CLIConfig, LLMProvider } from "./types.js";
 
-const CONFIG_DIR = path.join(
-  os.homedir(),
-  ".config",
-  "mdbase-tasknotes",
-);
+const HOME_DIR = process.env.HOME || os.homedir();
+const CONFIG_DIR = process.env.MDBASE_TASKNOTES_CONFIG_DIR
+  ? path.resolve(process.env.MDBASE_TASKNOTES_CONFIG_DIR)
+  : path.join(HOME_DIR, ".config", "mdbase-tasknotes");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 
 const DEFAULT_CONFIG: CLIConfig = {
   collectionPath: null,
   language: "en",
+  llmProvider: null,
+  llmModel: null,
 };
 
 function load(): CLIConfig {
@@ -39,6 +40,10 @@ export function setConfig(key: string, value: string | null): void {
     config.collectionPath = value;
   } else if (key === "language") {
     config.language = value ?? "en";
+  } else if (key === "llmProvider") {
+    config.llmProvider = value as LLMProvider | null;
+  } else if (key === "llmModel") {
+    config.llmModel = value;
   }
   save(config);
 }
@@ -61,12 +66,13 @@ export function resolveCollectionPath(flagPath?: string): string {
 }
 
 function expandHomeDirectory(userPath: string): string {
+  const homeDirectory = HOME_DIR;
   if (userPath === "~") {
-    return os.homedir();
+    return homeDirectory;
   }
 
   if (userPath.startsWith("~/") || userPath.startsWith("~\\")) {
-    return path.join(os.homedir(), userPath.slice(2));
+    return path.join(homeDirectory, userPath.slice(2));
   }
 
   return userPath;

@@ -6,6 +6,7 @@ import { formatTask, showError, showSuccess, showWarning } from "../format.js";
 import { normalizeFrontmatter } from "../field-mapping.js";
 import { createTaskWithCompat } from "../create-compat.js";
 import type { TaskResult } from "../types.js";
+import { compactStem, FILENAME_SCHEMA, generateSlug, resolveNamingDate } from "../naming.js";
 
 export async function createCommand(
   text: string[],
@@ -14,13 +15,25 @@ export async function createCommand(
   const input = text.join(" ").trim();
   if (!input) {
     showError("Please provide task text.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   try {
     const parser = await createParser(options.path);
     const parsed = parser.parseInput(input);
     const { frontmatter, body } = mapToFrontmatter(parsed);
+    const title = typeof frontmatter.title === "string" ? frontmatter.title : input;
+    const generated = await generateSlug({ title, noteType: "task" });
+    frontmatter.file_slug = generated.slug;
+    frontmatter.filename_schema = FILENAME_SCHEMA;
+    frontmatter.file_slug_source = generated.source;
+    const fileNameOverride = compactStem(
+      "task",
+      resolveNamingDate(frontmatter as Record<string, unknown>, ""),
+      generated.slug,
+    );
+    if (generated.warning) showWarning(`Using fallback filename: ${generated.warning}`);
 
     await withCollection(async (collection, mapping) => {
       const result = await createTaskWithCompat(
@@ -29,6 +42,7 @@ export async function createCommand(
         frontmatter as Record<string, unknown>,
         body,
         options.folder,
+        fileNameOverride,
       );
 
       if (result.warnings && result.warnings.length > 0) {
@@ -39,7 +53,8 @@ export async function createCommand(
 
       if (result.error) {
         showError(`Failed to create task: ${result.error.message}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const fm = normalizeFrontmatter(result.frontmatter as Record<string, unknown>, mapping);
@@ -55,6 +70,6 @@ export async function createCommand(
     }, options.path);
   } catch (err) {
     showError((err as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

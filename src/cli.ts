@@ -19,6 +19,8 @@ import { projectsListCommand, projectsShowCommand } from "./commands/projects.js
 import { statsCommand } from "./commands/stats.js";
 import { interactiveCommand } from "./commands/interactive.js";
 import { configCommand } from "./commands/config.js";
+import { llmConfigureCommand, llmStatusCommand, llmTestCommand } from "./commands/llm.js";
+import { namesCommand } from "./commands/names.js";
 import { skipCommand, unskipCommand } from "./commands/skip.js";
 import { treeCommand } from "./commands/tree.js";
 import { organizeCommand } from "./commands/organize.js";
@@ -182,6 +184,18 @@ program
     return organizeCommand({ ...opts, path: parentOpts.path });
   });
 
+program
+  .command("names [pathOrTitle]")
+  .description("Audit or apply compact filenames for tasks and projects")
+  .option("--preview", "Generate and display proposed names without writing")
+  .option("--apply", "Generate naming metadata and organize paths")
+  .option("--refresh", "Regenerate an existing slug for preview or apply")
+  .option("--concurrency <n>", "Parallel slug-generation requests, 1-16 (default 4)", "4")
+  .action((pathOrTitle: string | undefined, opts: any) => {
+    const parentOpts = program.opts();
+    return namesCommand(pathOrTitle, { ...opts, path: parentOpts.path });
+  });
+
 // Search
 program
   .command("search <query...>")
@@ -289,6 +303,17 @@ program
   .option("--get <key>", "Get a config value")
   .option("--list", "List all config values")
   .action(configCommand);
+
+const llm = program.command("llm").description("Configure and test LLM-assisted naming");
+
+llm
+  .command("configure")
+  .option("--provider <provider>", "openai, anthropic, or google")
+  .option("--model <model>", "Provider model name")
+  .action(llmConfigureCommand);
+
+llm.command("status").description("Show LLM configuration and credential status").action(llmStatusCommand);
+llm.command("test").description("Validate the configured provider and model").action(llmTestCommand);
 
 // Helper for collecting repeated options
 function collect(value: string, previous: string[]): string[] {

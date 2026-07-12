@@ -10,11 +10,15 @@ function makeTempHome(prefix = "mtn-home-") {
 
 async function loadConfigModule(tempHome, tag) {
   const prevHome = process.env.HOME;
+  const prevConfigDir = process.env.MDBASE_TASKNOTES_CONFIG_DIR;
   process.env.HOME = tempHome;
+  process.env.MDBASE_TASKNOTES_CONFIG_DIR = join(tempHome, '.config', 'mdbase-tasknotes');
   try {
     return await import(`../../dist/config.js?${tag}`);
   } finally {
     process.env.HOME = prevHome;
+    if (prevConfigDir === undefined) delete process.env.MDBASE_TASKNOTES_CONFIG_DIR;
+    else process.env.MDBASE_TASKNOTES_CONFIG_DIR = prevConfigDir;
   }
 }
 

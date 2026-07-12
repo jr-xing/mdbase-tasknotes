@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import { makeTempDir, runCli, stripAnsi } from "../helpers.mjs";
 
 function mutateTaskFrontmatter(taskPath, replacer) {
@@ -18,7 +18,9 @@ function createBaseCollectionWithTask(title) {
   result = runCli(["create", "--path", collectionPath, title]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
 
-  return { collectionPath, taskPath: join(collectionPath, "tasks", `${title}.md`) };
+  const taskFiles = readdirSync(join(collectionPath, "tasks")).filter((name) => name.endsWith(".md"));
+  assert.equal(taskFiles.length, 1);
+  return { collectionPath, taskPath: join(collectionPath, "tasks", taskFiles[0]) };
 }
 
 test("cli conformance: recurring target date resolution precedence", async (t) => {
@@ -144,10 +146,11 @@ test("cli conformance: title fallback and matching behavior", async (t) => {
     const { collectionPath, taskPath } = createBaseCollectionWithTask("FallbackName");
     mutateTaskFrontmatter(taskPath, (text) => text.replace(/^title: FallbackName\n/m, ""));
 
-    const result = runCli(["show", "--path", collectionPath, "FallbackName"]);
+    const fileTitle = basename(taskPath, ".md");
+    const result = runCli(["show", "--path", collectionPath, fileTitle]);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const output = stripAnsi(result.stdout);
-    assert.match(output, /FallbackName/);
+    assert.match(output, new RegExp(fileTitle));
   });
 
   await t.test("complete prefers exact title match over substring", () => {

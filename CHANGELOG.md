@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Added stable compact task/project filenames with persisted slug metadata, deterministic offline fallback naming, and the `mtnj names` audit/backfill command.
+- Added no-write `names --preview` output using the full project/parent/leaf hierarchy planner, plus bounded parallel slug generation through `--concurrency` while keeping metadata and filesystem mutations sequential.
+- Made repeated naming migrations idempotent by reusing stored slugs, skipping unchanged frontmatter writes, verifying paths on every apply, and pruning only empty obsolete hierarchy folders.
+- Integrated attachment scanning into naming preview/apply so binaries are resolved before folder renames, moved into compact project-level `_assets` storage, and relinked from their final note paths.
+- Added optional OpenAI, Anthropic, and Google slug generation with free-form model configuration and environment-only credentials via `mtnj llm` commands.
+- Moved binary attachments into shallow project-level `_assets` buckets while preserving original filenames, updating Markdown links and wikilinks, and avoiding binary-driven task promotion.
+- Made CLI tests Windows-native and isolated configuration tests from the real user profile.
+
 ## 0.1.4 - 2026-03-15
 
 - Added `--attachments` flag to `mtnj organize` to co-locate attachments with the notes that own them.

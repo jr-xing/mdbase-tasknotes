@@ -124,6 +124,16 @@ export function buildTaskTypeDef(opts: InitOptions = {}): string {
   lines.push('    generated: "now_on_write"');
   lines.push("    tn_role: dateModified");
 
+  lines.push("  file_slug:");
+  lines.push("    type: string");
+  lines.push('    description: "Stable compact filename slug."');
+  lines.push("  filename_schema:");
+  lines.push("    type: string");
+  lines.push('    description: "Filename policy version, currently compact-v1."');
+  lines.push("  file_slug_source:");
+  lines.push("    type: enum");
+  lines.push("    values: [llm, fallback, manual]");
+
   // recurrence
   lines.push("  recurrence:");
   lines.push("    type: string");

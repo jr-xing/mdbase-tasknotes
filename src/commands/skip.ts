@@ -29,14 +29,16 @@ async function setSkipState(
 
       if (read.error) {
         showError(`Failed to read task: ${read.error.message}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const fm = normalizeFrontmatter(read.frontmatter as Record<string, unknown>, mapping);
       const taskTitle = resolveDisplayTitle(fm, mapping, taskPath) || taskPath;
       if (typeof fm.recurrence !== "string" || fm.recurrence.trim().length === 0) {
         showError("Skip/unskip is only supported for recurring tasks.");
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const targetDate = resolveOperationTargetDate(
@@ -97,7 +99,8 @@ async function setSkipState(
 
       if (result.error) {
         showError(`Failed to ${options.skip ? "skip" : "unskip"} recurring instance: ${result.error.message}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const verb = options.skip ? "Skipped" : "Unskipped";
@@ -106,6 +109,6 @@ async function setSkipState(
     }, options.path);
   } catch (err) {
     showError((err as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

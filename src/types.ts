@@ -34,4 +34,9 @@ export interface TaskResult {
 export interface CLIConfig {
   collectionPath: string | null;
   language: string;
+  llmProvider: LLMProvider | null;
+  llmModel: string | null;
 }
+
+export type LLMProvider = "openai" | "anthropic" | "google";
+export type FileSlugSource = "llm" | "fallback" | "manual";

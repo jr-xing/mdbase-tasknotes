@@ -7,7 +7,7 @@ How to rebuild, reinstall, and keep the skill docs in sync.
 After making code changes to `src/`:
 
 ```bash
-cd C:\Users\remus\Documents\Projects\2026-03-TASKNOTE-FORK
+cd C:\Users\remus\Documents\Projects\2026-07-mdbase-tasknotes
 
 # Option A: Use the install script (builds + installs)
 ./scripts/install-global.sh
@@ -32,6 +32,7 @@ Verify:
 ```bash
 mtnj --version
 mtnj tree -p "C:\Users\remus\Documents\Obsidian\ResearchKelan"
+mtnj names -p "C:\Users\remus\Documents\Obsidian\ResearchKelan"
 ```
 
 ## 2. Update the skill repo

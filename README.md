@@ -10,6 +10,8 @@ Works on the same vault and `_types/task.md` schema that the [TaskNotes](https:/
 
 - **Project names with spaces** — `+[[My Project Name]]` works natively without double-wrapping wikilinks. No sed post-processing needed.
 - **`--folder` option on `create`** — control which directory the created file is saved to (e.g. `--folder projects`, `--folder tasks`).
+- **Compact filenames** — task and project paths use stable `YYYY-MM-DD-T/P-<slug>` basenames while the full title stays in frontmatter.
+- **Optional LLM naming** — OpenAI, Anthropic, and Google model IDs are entered manually; an offline first-words fallback always works.
 - **`tree` command** — hierarchical project/task/subtask display with tree-drawing characters.
 - **`organize` command** — reorganize task files into project folders based on hierarchy (dry-run by default, `--apply` to execute).
 - **`organize --attachments`** — co-locate binary attachments and owned notes (`task-card`, `prompt-note`) with the tasks that reference them, using LCA placement for shared files.
@@ -79,6 +81,8 @@ mtnj timer log --period today
 | `mtnj list` | List tasks with filters (`--status`, `--priority`, `--tag`, `--due`, `--overdue`, `--where`, `--on`, `--json`) |
 | `mtnj tree` | Display tasks in a project/subtask hierarchy (`--status`, `--priority`, `--tag`, `--overdue`, `--all`) |
 | `mtnj organize` | Organize tasks into project folders based on hierarchy (`--apply`, `--orphans skip\|unassigned`, `--attachments`) |
+| `mtnj names [task]` | Audit names, `--preview` generated names, or `--apply` them (`--concurrency` controls parallel generation) |
+| `mtnj llm configure\|status\|test` | Configure and validate optional semantic filename generation |
 | `mtnj show <task>` | Show full task detail (`--on YYYY-MM-DD` for recurring instance state) |
 | `mtnj complete <task>` | Mark a task as done (`--date YYYY-MM-DD` for recurring instance completion) |
 | `mtnj update <task>` | Update fields (`--status`, `--priority`, `--due`, `--title`, `--add-tag`, `--remove-tag`) |
@@ -94,6 +98,30 @@ mtnj timer log --period today
 | `mtnj config` | Manage CLI configuration (`--set`, `--get`, `--list`) |
 
 Tasks can be referenced by file path or title. Titles are matched exactly first, then by substring.
+
+## Compact filenames and optional LLM naming
+
+New tasks keep their complete human title in `title` but use a short physical filename such as `2026-06-24-T-dual-net-initial.md`. Each note stores `file_slug`, `filename_schema: compact-v1`, and `file_slug_source` (`llm`, `fallback`, or `manual`). Title edits do not automatically rename an established file.
+
+Without LLM configuration, `mtnj` deterministically uses the first three sanitized title words when they fit, otherwise the first two or one. Task capture therefore remains offline-safe.
+
+```powershell
+# Optional semantic naming; model names are intentionally free-form
+mtnj llm configure --provider openai --model <model-name>
+$env:OPENAI_API_KEY = "..."
+mtnj llm test
+
+# Audit and migrate existing or Obsidian-created notes
+mtnj names -p "C:\path\to\vault"
+mtnj names -p "C:\path\to\vault" --preview --concurrency 4
+mtnj names -p "C:\path\to\vault" --apply
+```
+
+Provider credentials are read only from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`; keys are never saved in the mtnj config file.
+
+`names --preview` makes provider calls for notes that need generation (or all selected notes with `--refresh`) and feeds the proposed slugs into the same hierarchy planner used by `--apply`. Its move plan shows compact project folders, parent-task folders, leaf filenames, and linked attachment destinations together, without writing metadata or moving files. `names --apply` scans links while the old hierarchy still exists, then serializes frontmatter updates, link-aware note moves, and attachment moves for safety. Attachment migration is automatic and attachment basenames are preserved. The default generation concurrency is 4 and the allowed range is 1–16. Because preview does not persist generated slugs, a later apply makes fresh provider calls and may produce slightly different semantic wording.
+
+Repeated `names --apply` runs reuse stored slugs, skip unchanged metadata writes, and still verify the physical hierarchy. After successful moves, obsolete source folders are removed only when they are empty.
 
 ## Tree view
 
@@ -134,14 +162,14 @@ Result:
 
 ```
 projects/
-  2026-03-07-PROJECT PIS score/
-    2026-03-07-PROJECT PIS score.md
-    2026-03-07-TASK Yale Cardio Onc Strain/
-      2026-03-07-TASK Yale Cardio Onc Strain.md
-      2026-03-08-TASK Deploy Block Matching....md
-      2026-03-08-TASK Deploy DeepStrain....md
-    2026-03-07-TASK Yale Cardio Onc T1 data/
-      2026-03-07-TASK Yale Cardio Onc T1 data.md
+  2026-03-07-P-pis-score/
+    2026-03-07-P-pis-score.md
+    2026-03-07-T-yale-cardio-onc/
+      2026-03-07-T-yale-cardio-onc.md
+      2026-03-08-T-deploy-block-matching.md
+      2026-03-08-T-deploy-deepstrain.md
+    2026-03-07-T-yale-cardio-t1/
+      2026-03-07-T-yale-cardio-t1.md
       2026-03-07-TASK T1 Myocardium Labeling.md
     2026-03-05-TASK Check status of fetal brain dataset.md
 ```
@@ -163,26 +191,25 @@ mtnj organize --attachments --apply
 mtnj organize --attachments --apply --orphans unassigned
 ```
 
-**Binary attachments** (PDFs, images, spreadsheets, etc.) referenced in note bodies are moved into an `assets/` folder. Placement follows the **Lowest Common Ancestor** rule: an attachment used by exactly one task goes into that task's own subfolder; one shared by multiple tasks in the same project goes into the project folder; cross-project attachments float up further.
+**Binary attachments** retain their original filenames and move to shallow project-level storage. A single-owner file goes to `<project>/_assets/<task-stem>/`, files shared inside a project go to `<project>/_assets/_shared/`, and cross-project files go to vault-level `_assets/_shared/`. Targets longer than 220 characters and filename collisions are skipped with warnings.
 
 ```
 projects/
   my-project/
     my-project.md
-    task-a/                       ← promoted (now owns assets)
-      task-a.md
-      my-card.md                  ← task-card moved here
-      assets/
+    task-a.md
+    _assets/
+      task-a/
         photo.png                 ← sole attachment of task-a
-    assets/
-      report.pdf                  ← shared by task-a and task-b
+      _shared/
+        report.pdf                ← shared by task-a and task-b
 ```
 
 **Owned notes** (`task-card` and `prompt-note` types) are moved next to the task that references them via `collection.rename(update_refs: true)`, so all wikilinks update automatically.
 
-**Note promotion**: a flat task note (`task.md`) that becomes the sole owner of attachments is automatically promoted to its own subfolder (`task/task.md`) to make room for `assets/`.
+Binary ownership no longer promotes a leaf task into its own folder. Owned Markdown note types keep their existing placement and promotion behavior.
 
-Markdown-style link paths in note bodies are updated after binary moves. Wikilinks (`![[file.pdf]]`) are left as-is — Obsidian resolves them by filename regardless of location.
+Markdown-style links and wikilinks are updated to the binary file's final path after a move.
 
 #### Setting up owned note types
 

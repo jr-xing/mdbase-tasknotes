@@ -45,6 +45,11 @@ export interface AttachmentPlan {
     to: string;   // collection-relative
     referencingNotes: string[];
   }>;
+  /** Binaries that cannot move; links are still recalculated after note moves. */
+  stationaryBinaries: Array<{
+    path: string;
+    referencingNotes: string[];
+  }>;
   /** Owned notes to move via collection.rename (wikilink refs auto-updated) */
   ownedNoteMoves: Array<{
     from: string;
@@ -293,8 +298,10 @@ export async function scanAttachments(
 export function planAttachmentMoves(
   scanResult: AttachmentScanResult,
   desiredPaths: Map<string, string>,
+  collectionRoot = "",
 ): AttachmentPlan {
   const binaryMoves: AttachmentPlan["binaryMoves"] = [];
+  const stationaryBinaries: AttachmentPlan["stationaryBinaries"] = [];
   const ownedNoteMoves: AttachmentPlan["ownedNoteMoves"] = [];
   const promotionMoves: AttachmentPlan["promotionMoves"] = [];
   const warnings: string[] = [];
@@ -364,24 +371,36 @@ export function planAttachmentMoves(
     const participantEffectiveRefs = effectiveRefs.filter((_, i) => participantRefPaths.has(refs[i]));
     if (participantEffectiveRefs.length === 0) continue;
 
-    const virtualDirs = participantEffectiveRefs.map(noteVirtualDir);
-    const lca = computeLCAOfDirs(virtualDirs);
     const fname = basename(binaryPath);
-    const desiredTo = lca === "." ? `assets/${fname}` : `${lca}/assets/${fname}`;
+    const projectRoots = new Set(
+      participantEffectiveRefs.map(projectRootForPath).filter((value): value is string => Boolean(value)),
+    );
+    let desiredTo: string;
+    if (projectRoots.size === 1) {
+      const projectRoot = [...projectRoots][0];
+      const ownerBucket = participantEffectiveRefs.length === 1
+        ? basename(participantEffectiveRefs[0], ".md")
+        : "_shared";
+      desiredTo = `${projectRoot}/_assets/${ownerBucket}/${fname}`;
+    } else {
+      desiredTo = `_assets/_shared/${fname}`;
+    }
     const normalized = binaryPath.replace(/\\/g, "/");
 
     if (normalized === desiredTo) continue;
 
     if (plannedBinaryTargets.has(desiredTo) && plannedBinaryTargets.get(desiredTo) !== normalized) {
       warnings.push(`Collision: "${fname}" from multiple sources at "${desiredTo}" — skipping "${normalized}"`);
+      stationaryBinaries.push({ path: normalized, referencingNotes: refs });
+      continue;
+    }
+    const absoluteTarget = collectionRoot ? join(collectionRoot, desiredTo) : desiredTo;
+    if (absoluteTarget.length > 220) {
+      warnings.push(`Path exceeds 220 characters: "${desiredTo}" — skipping "${normalized}"`);
+      stationaryBinaries.push({ path: normalized, referencingNotes: refs });
       continue;
     }
     plannedBinaryTargets.set(desiredTo, normalized);
-
-    // Promote only participant referencing notes
-    for (const ref of participantEffectiveRefs) {
-      maybePromote(ref);
-    }
 
     // Keep all refs (including non-participants) for display and link updating
     binaryMoves.push({ from: normalized, to: desiredTo, referencingNotes: refs });
@@ -420,7 +439,7 @@ export function planAttachmentMoves(
     ownedNoteMoves.push({ from: normalized, to: desiredTo, noteType: noteType || "owned", referencingNotes: refs });
   }
 
-  return { binaryMoves, ownedNoteMoves, promotionMoves, warnings };
+  return { binaryMoves, stationaryBinaries, ownedNoteMoves, promotionMoves, warnings };
 }
 
 // ============================================================
@@ -554,15 +573,19 @@ export async function executeAttachmentMoves(
     }
   }
 
-  // 3. Move binary files (raw filesystem)
-  const movedBinaries = new Map<string, string>(); // from → to (succeeded only)
+  // 3. Move binary files (raw filesystem). Failed or skipped moves point to
+  // their original location so links remain valid after their notes move.
+  const finalBinaryPaths = new Map<string, string>();
+  for (const stationary of plan.stationaryBinaries) {
+    finalBinaryPaths.set(stationary.path, stationary.path);
+  }
   for (const move of plan.binaryMoves) {
     try {
       const absFrom = join(collectionRoot, move.from);
       const absTo = join(collectionRoot, move.to);
       mkdirSync(dirname(absTo), { recursive: true });
       renameSync(absFrom, absTo);
-      movedBinaries.set(move.from, move.to);
+      finalBinaryPaths.set(move.from, move.to);
       console.log(
         chalk.green("  ✓ ") +
         chalk.dim(`[binary] ${move.from}`) +
@@ -576,15 +599,20 @@ export async function executeAttachmentMoves(
         `[binary] ${move.from}` +
         chalk.red(` (${(err as Error).message})`),
       );
+      finalBinaryPaths.set(move.from, move.from);
       failed++;
     }
   }
 
   // 4. Update markdown-style body links in referencing notes
-  if (movedBinaries.size > 0) {
+  if (finalBinaryPaths.size > 0) {
     const affectedNotes = new Set<string>();
-    for (const move of plan.binaryMoves) {
-      for (const noteRef of move.referencingNotes) {
+    const binaryReferences = [
+      ...plan.binaryMoves.map((move) => ({ path: move.from, referencingNotes: move.referencingNotes })),
+      ...plan.stationaryBinaries,
+    ];
+    for (const item of binaryReferences) {
+      for (const noteRef of item.referencingNotes) {
         // Use the post-promotion path if the note was promoted
         affectedNotes.add(promotedFinalPaths.get(noteRef) ?? noteRef);
       }
@@ -598,7 +626,7 @@ export async function executeAttachmentMoves(
         const updated = updateMarkdownBodyLinks(
           raw,
           noteFinalPath,
-          movedBinaries,
+          finalBinaryPaths,
           collectionRoot,
         );
         if (updated !== raw) {
@@ -617,7 +645,7 @@ export async function executeAttachmentMoves(
 // Body link updater (markdown links only; wikilinks resolve by filename)
 // ============================================================
 
-function updateMarkdownBodyLinks(
+export function updateMarkdownBodyLinks(
   content: string,
   noteFinalPath: string,
   movedBinaries: Map<string, string>,
@@ -640,7 +668,21 @@ function updateMarkdownBodyLinks(
     updated = updated.replace(mdRe, (_match, prefix, _oldPath, close) => {
       return `${prefix}${newRelFromNote}${close}`;
     });
+
+    const wikiRe = /(!?\[\[)([^|\]#]+)([^\]]*\]\])/g;
+    updated = updated.replace(wikiRe, (match, open, target, tail) => {
+      const normalizedTarget = String(target).replace(/\\/g, "/");
+      if (basename(normalizedTarget) !== basename(oldRel)) return match;
+      return `${open}${newRel}${tail}`;
+    });
   }
 
   return updated;
+}
+
+function projectRootForPath(notePath: string): string | null {
+  const normalized = notePath.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  if (parts[0] !== "projects" || !parts[1] || parts[1] === "_unassigned") return null;
+  return `projects/${parts[1]}`;
 }

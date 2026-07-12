@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCli, makeTempDir, stripAnsi } from './helpers.mjs';
 
@@ -13,7 +13,9 @@ test('recurrence instance state: skip, unskip, complete by date', () => {
   result = runCli(['create', '--path', collectionPath, 'Recurring checkin #work']);
   assert.equal(result.status, 0, result.stderr || result.stdout);
 
-  const taskPath = join(collectionPath, 'tasks', 'Recurring checkin.md');
+  const taskName = readdirSync(join(collectionPath, 'tasks')).find((name) => name.endsWith('.md'));
+  assert.ok(taskName);
+  const taskPath = join(collectionPath, 'tasks', taskName);
   const original = readFileSync(taskPath, 'utf8');
   const updated = original.replace(
     'title: Recurring checkin\n',

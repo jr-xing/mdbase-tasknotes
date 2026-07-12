@@ -37,6 +37,7 @@ export async function createTaskWithCompat(
   roleFrontmatter: UnknownRecord,
   body?: string,
   folder?: string,
+  fileNameOverride?: string,
 ): Promise<CreateResultLike> {
   const taskType = getTaskTypeDef(collection);
   const denormalized = denormalizeFrontmatter(roleFrontmatter, mapping);
@@ -50,6 +51,22 @@ export async function createTaskWithCompat(
     frontmatter: denormalized,
     body,
   };
+
+  if (fileNameOverride) {
+    const pathResolution = derivePathFromType(taskType, denormalized, mapping, new Date());
+    if (pathResolution.path) {
+      let explicitPath = replaceBasename(pathResolution.path, fileNameOverride);
+      if (folder) explicitPath = replaceFolder(explicitPath, folder);
+      return await (collection as any).create({
+        frontmatter: denormalized,
+        body,
+        path: explicitPath,
+      }) as CreateResultLike;
+    }
+    if (pathResolution.errorMessage) {
+      return { error: { code: "path_required", message: pathResolution.errorMessage } };
+    }
+  }
 
   // If folder override is provided, derive path and replace the folder prefix.
   // Omit type so mdbase skips match rule validation for the overridden path.
@@ -113,6 +130,13 @@ function replaceFolder(filePath: string, newFolder: string): string {
   const slashIndex = normalized.indexOf("/");
   if (slashIndex === -1) return `${newFolder}/${normalized}`;
   return `${newFolder}${normalized.substring(slashIndex)}`;
+}
+
+function replaceBasename(filePath: string, newBaseName: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  const slashIndex = normalized.lastIndexOf("/");
+  const fileName = newBaseName.toLowerCase().endsWith(".md") ? newBaseName : `${newBaseName}.md`;
+  return slashIndex === -1 ? fileName : `${normalized.slice(0, slashIndex + 1)}${fileName}`;
 }
 
 function getTaskTypeDef(collection: Collection): TaskTypeDefLike | undefined {
@@ -209,22 +233,19 @@ function applyMatchDefaults(
   }
 }
 
-const DEFAULT_PATH_PATTERN = "tasks/{title}.md";
-
 function derivePathFromType(
   taskType: TaskTypeDefLike | undefined,
   frontmatter: UnknownRecord,
   mapping: FieldMapping,
   now: Date,
 ): { path?: string; missingKeys?: string[]; template?: string; errorMessage?: string } {
-  const pattern =
-    taskType && typeof taskType.path_pattern === "string" && taskType.path_pattern.trim().length > 0
-      ? taskType.path_pattern
-      : DEFAULT_PATH_PATTERN;
-
   if (!taskType) {
     return {};
   }
+  if (typeof taskType.path_pattern !== "string" || taskType.path_pattern.trim().length === 0) {
+    return { errorMessage: buildMissingPathPatternMessage(taskType) };
+  }
+  const pattern = taskType.path_pattern;
 
   const values = buildTemplateValues(frontmatter, mapping, now);
   const renderedPattern = renderTemplate(pattern, values);

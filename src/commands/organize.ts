@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import { basename, dirname, join, posix } from "node:path";
-import { mkdirSync } from "node:fs";
+import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";
 import { withCollection } from "../collection.js";
 import { showError } from "../format.js";
 import {
@@ -10,6 +10,7 @@ import {
 import type { TaskResult } from "../types.js";
 import type { Collection } from "@callumalpass/mdbase";
 import type { InternalResolverContext } from "../project-resolver.js";
+import { desiredCompactStem } from "../naming.js";
 import {
   scanAttachments,
   planAttachmentMoves,
@@ -17,11 +18,13 @@ import {
   executeAttachmentMoves,
 } from "./organize-attachments.js";
 
-interface OrganizeOptions {
+export interface OrganizeOptions {
   path?: string;
   apply?: boolean;
   orphans?: string; // "skip" (default) | "unassigned"
   attachments?: boolean;
+  /** In-memory slugs used by `names --preview`; never persisted here. */
+  nameOverrides?: Map<string, { slug: string }>;
 }
 
 interface PlannedMove {
@@ -82,7 +85,8 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
           if (!resolvedPath) continue;
 
           // Read target frontmatter to classify
-          const targetType = await getNoteType(collection, resolvedPath, readCache);
+          const targetType = allNotes.get(resolvedPath)?.type
+            ?? await getNoteType(collection, resolvedPath, readCache);
 
           if (targetType === "task") {
             // It's a parent task link
@@ -128,8 +132,18 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
       const warnings: string[] = [];
       const targetPaths = new Set<string>();
 
-      // Helper: get the stem (filename without .md)
-      const stem = (filePath: string) => basename(filePath, ".md");
+      const collectionRoot = (collection as any).rootPath || (collection as any).root || "";
+      const stem = (filePath: string) => {
+        const note = allNotes.get(filePath);
+        if (!note) return basename(filePath, ".md");
+        const override = options.nameOverrides?.get(filePath);
+        const frontmatter = override
+          ? { ...note.frontmatter, file_slug: override.slug }
+          : note.frontmatter;
+        return desiredCompactStem(note.type, frontmatter, note.path, collectionRoot)
+          ?? basename(filePath, ".md");
+      };
+      const fileName = (filePath: string) => `${stem(filePath)}.md`;
 
       // Build a map of project path -> project folder
       // Always root at "projects/" regardless of where the project note currently lives
@@ -147,7 +161,7 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
       // First: project notes go into their own folder
       for (const p of projects) {
         const folder = projectFolderMap.get(p.path)!;
-        const desired = normalizeSlashes(join(folder, basename(p.path)));
+        const desired = normalizeSlashes(join(folder, fileName(p.path)));
         desiredPaths.set(p.path, desired);
       }
 
@@ -157,8 +171,13 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
         if (!projectPath) {
           // Orphan
           if (options.orphans === "unassigned") {
-            const desired = normalizeSlashes(join("projects/_unassigned", basename(task.path)));
+            const desired = normalizeSlashes(join("projects/_unassigned", fileName(task.path)));
             desiredPaths.set(task.path, desired);
+          } else if (
+            options.nameOverrides?.has(task.path) ||
+            desiredCompactStem("task", task.frontmatter, task.path, collectionRoot)
+          ) {
+            desiredPaths.set(task.path, normalizeSlashes(join(dirname(task.path), fileName(task.path))));
           }
           continue;
         }
@@ -187,12 +206,12 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
         // been promoted by a prior `organize --attachments` run.
         const hasChildren = (childrenOf.get(task.path)?.size ?? 0) > 0;
         const alreadyInOwnSubfolder =
-          basename(dirname(task.path)) === stem(task.path);
+          basename(dirname(task.path)) === basename(task.path, ".md");
         if (hasChildren || alreadyInOwnSubfolder) {
           const taskFolder = normalizeSlashes(join(currentDir, stem(task.path)));
-          desiredPaths.set(task.path, normalizeSlashes(join(taskFolder, basename(task.path))));
+          desiredPaths.set(task.path, normalizeSlashes(join(taskFolder, fileName(task.path))));
         } else {
-          desiredPaths.set(task.path, normalizeSlashes(join(currentDir, basename(task.path))));
+          desiredPaths.set(task.path, normalizeSlashes(join(currentDir, fileName(task.path))));
         }
       }
 
@@ -235,8 +254,6 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
       }
 
       // Phase 6: Attachment scan + plan (if requested)
-      const collectionRoot = (collection as any).rootPath || (collection as any).root || "";
-
       let attachmentPlan = null;
       if (options.attachments) {
         const scanResult = await scanAttachments(
@@ -245,7 +262,7 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
           desiredPaths,
           resolverContext,
         );
-        attachmentPlan = planAttachmentMoves(scanResult, desiredPaths);
+        attachmentPlan = planAttachmentMoves(scanResult, desiredPaths, collectionRoot);
       }
 
       // Phase 7: Output
@@ -345,6 +362,13 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
           failed += af;
         }
 
+        pruneEmptySourceDirectories(collectionRoot, [
+          ...moves.map((move) => move.from),
+          ...(attachmentPlan?.binaryMoves.map((move) => move.from) ?? []),
+          ...(attachmentPlan?.ownedNoteMoves.map((move) => move.from) ?? []),
+          ...(attachmentPlan?.promotionMoves.map((move) => move.from) ?? []),
+        ]);
+
         console.log(chalk.bold(`\nDone: ${succeeded} moved, ${failed} failed.`));
 
         if (warnings.length > 0) {
@@ -363,7 +387,26 @@ export async function organizeCommand(options: OrganizeOptions): Promise<void> {
     }, options.path);
   } catch (err) {
     showError((err as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
+  }
+}
+
+/** Remove only obsolete empty hierarchy directories, never collection roots. */
+function pruneEmptySourceDirectories(collectionRoot: string, sourcePaths: string[]): void {
+  const absoluteRoot = resolve(collectionRoot);
+  const candidates = [...new Set(sourcePaths.map((source) => dirname(source)))]
+    .sort((a, b) => b.split(/[\\/]/).length - a.split(/[\\/]/).length);
+
+  for (const candidate of candidates) {
+    let current = resolve(collectionRoot, candidate);
+    while (true) {
+      const rel = relative(absoluteRoot, current);
+      const depth = rel.split(/[\\/]/).filter(Boolean).length;
+      if (!rel || rel.startsWith("..") || depth <= 1) break;
+      if (!existsSync(current) || readdirSync(current).length > 0) break;
+      rmdirSync(current);
+      current = dirname(current);
+    }
   }
 }
 

@@ -29,23 +29,23 @@ test('list/show/complete resolve task by filename when title field is missing', 
   assert.equal(result.status, 0, result.stderr || result.stdout);
 
   const taskName = removeTitleField(collectionPath);
-  assert.equal(taskName, 'FilenameFallbackTask');
+  assert.match(taskName, /^\d{4}-\d{2}-\d{2}-T-filenamefallbacktask$/);
 
   result = runCli(['list', '--path', collectionPath]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(stripAnsi(result.stdout), /FilenameFallbackTask/);
+  assert.match(stripAnsi(result.stdout), new RegExp(taskName));
 
   result = runCli(['list', '--path', collectionPath, '--json']);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const tasks = JSON.parse(result.stdout);
   assert.equal(tasks.length, 1);
-  assert.equal(tasks[0].title, 'FilenameFallbackTask');
+  assert.equal(tasks[0].title, taskName);
 
-  result = runCli(['show', '--path', collectionPath, 'FilenameFallbackTask']);
+  result = runCli(['show', '--path', collectionPath, taskName]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(stripAnsi(result.stdout), /FilenameFallbackTask/);
+  assert.match(stripAnsi(result.stdout), new RegExp(taskName));
 
-  result = runCli(['complete', '--path', collectionPath, 'FilenameFallbackTask']);
+  result = runCli(['complete', '--path', collectionPath, taskName]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(stripAnsi(result.stdout), /Completed:\s+FilenameFallbackTask/);
+  assert.match(stripAnsi(result.stdout), new RegExp(`Completed:\\s+${taskName}`));
 });

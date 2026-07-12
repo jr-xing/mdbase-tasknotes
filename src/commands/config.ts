@@ -16,8 +16,14 @@ export function configCommand(options: {
     const key = options.set.slice(0, eqIndex);
     const value = options.set.slice(eqIndex + 1);
 
-    if (key !== "collectionPath" && key !== "language") {
-      showError(`Unknown config key: ${key}. Valid keys: collectionPath, language`);
+    const validKeys = ["collectionPath", "language", "llmProvider", "llmModel"];
+    if (!validKeys.includes(key)) {
+      showError(`Unknown config key: ${key}. Valid keys: ${validKeys.join(", ")}`);
+      process.exit(1);
+    }
+
+    if (key === "llmProvider" && value && !["openai", "anthropic", "google"].includes(value)) {
+      showError("llmProvider must be openai, anthropic, or google.");
       process.exit(1);
     }
 
@@ -30,7 +36,7 @@ export function configCommand(options: {
     const config = getConfig();
     const key = options.get as keyof typeof config;
     if (!(key in config)) {
-      showError(`Unknown config key: ${key}. Valid keys: collectionPath, language`);
+      showError(`Unknown config key: ${key}.`);
       process.exit(1);
     }
     console.log(config[key] ?? "(not set)");

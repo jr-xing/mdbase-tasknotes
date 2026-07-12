@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,25 +14,20 @@ export function stripAnsi(text) {
 }
 
 export function runCli(args, opts = {}) {
-  const runDir = makeTempDir('mtn-run-');
-  const stdoutPath = join(runDir, 'stdout.txt');
-  const stderrPath = join(runDir, 'stderr.txt');
-  const shellArgs = args.map(shellQuote).join(' ');
-  const command = `node dist/cli.js ${shellArgs} > ${shellQuote(stdoutPath)} 2> ${shellQuote(stderrPath)}`;
-
-  const result = spawnSync('bash', ['-lc', command], {
+  const isolatedConfigDir = join(makeTempDir('mtn-config-'), 'config');
+  const result = spawnSync(process.execPath, ['dist/cli.js', ...args], {
     cwd: opts.cwd,
     encoding: 'utf8',
-    env: { ...process.env, ...(opts.env || {}) },
+    env: {
+      ...process.env,
+      MDBASE_TASKNOTES_CONFIG_DIR: isolatedConfigDir,
+      ...(opts.env || {}),
+    },
   });
 
   return {
     status: result.status,
-    stdout: readFileSync(stdoutPath, 'utf8'),
-    stderr: readFileSync(stderrPath, 'utf8'),
+    stdout: result.stdout || '',
+    stderr: result.stderr || result.error?.message || '',
   };
-}
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
