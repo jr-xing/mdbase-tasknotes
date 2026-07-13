@@ -13,7 +13,7 @@ cd C:\Users\remus\Documents\Projects\2026-07-mdbase-tasknotes
 ./scripts/install-global.sh
 
 # Option B: Manual steps
-npm run build
+npm run bundle
 npm install -g .
 ```
 
@@ -92,7 +92,7 @@ New Claude Code sessions will use the updated skills immediately. Existing sessi
 ```bash
 # 1. Build and install CLI
 cd C:\Users\remus\Documents\Projects\2026-03-TASKNOTE-FORK
-npm run build && npm install -g .
+npm run bundle && npm install -g .
 
 # 2. Commit and push CLI changes
 git add <files>

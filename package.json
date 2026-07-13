@@ -24,13 +24,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "bundle": "tsup",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
-    "test": "npm run build && node --test tests/**/*.test.mjs",
-    "test:tz-parity": "npm run build && ./scripts/test-tz-parity.sh",
-    "prepare": "tsup",
-    "prepublishOnly": "tsup"
+    "test": "npm run bundle && node --test tests/**/*.test.mjs",
+    "test:tz-parity": "npm run bundle && ./scripts/test-tz-parity.sh",
+    "prepublishOnly": "npm run bundle"
   },
   "dependencies": {
     "@callumalpass/mdbase": "^0.2.2",

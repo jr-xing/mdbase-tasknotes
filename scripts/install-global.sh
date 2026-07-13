@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "Building..."
-npm run build
+npm run bundle
 
 echo "Installing globally..."
 npm install -g .
