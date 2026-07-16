@@ -310,6 +310,8 @@ llm
   .command("configure")
   .option("--provider <provider>", "openai, anthropic, or google")
   .option("--model <model>", "Provider model name")
+  .option("--api-key <key>", "Save an API key locally (may be visible in shell history)")
+  .option("--clear-api-key", "Remove the selected provider's saved API key")
   .action(llmConfigureCommand);
 
 llm.command("status").description("Show LLM configuration and credential status").action(llmStatusCommand);

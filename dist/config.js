@@ -42,6 +42,9 @@ function setConfig(key, value) {
 function getConfigPath() {
   return CONFIG_FILE;
 }
+function getConfigDir() {
+  return CONFIG_DIR;
+}
 function resolveUserPath(userPath) {
   return path.resolve(expandHomeDirectory(userPath));
 }
@@ -65,6 +68,7 @@ function expandHomeDirectory(userPath) {
 }
 export {
   getConfig,
+  getConfigDir,
   getConfigPath,
   resolveCollectionPath,
   resolveUserPath,

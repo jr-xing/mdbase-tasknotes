@@ -6,7 +6,8 @@
 - Added no-write `names --preview` output using the full project/parent/leaf hierarchy planner, plus bounded parallel slug generation through `--concurrency` while keeping metadata and filesystem mutations sequential.
 - Made repeated naming migrations idempotent by reusing stored slugs, skipping unchanged frontmatter writes, verifying paths on every apply, and pruning only empty obsolete hierarchy folders.
 - Integrated attachment scanning into naming preview/apply so binaries are resolved before folder renames, moved into compact project-level `_assets` storage, and relinked from their final note paths.
-- Added optional OpenAI, Anthropic, and Google slug generation with free-form model configuration and environment-only credentials via `mtnj llm` commands.
+- Added optional OpenAI, Anthropic, and Google slug generation with free-form model configuration via `mtnj llm` commands.
+- Added local, per-provider API-key persistence in a restricted credentials file, with masked entry, key replacement/removal, environment-variable overrides, and source-aware status output.
 - Moved binary attachments into shallow project-level `_assets` buckets while preserving original filenames, updating Markdown links and wikilinks, and avoiding binary-driven task promotion.
 - Made CLI tests Windows-native and isolated configuration tests from the real user profile.
 

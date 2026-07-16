@@ -108,8 +108,13 @@ Without LLM configuration, `mtnj` deterministically uses the first three sanitiz
 ```powershell
 # Optional semantic naming; model names are intentionally free-form
 mtnj llm configure --provider openai --model <model-name>
-$env:OPENAI_API_KEY = "..."
+# Enter the API key at the masked prompt. For non-interactive setup:
+mtnj llm configure --provider openai --model <model-name> --api-key "..."
 mtnj llm test
+
+# Inspect the active credential source or remove the saved OpenAI key
+mtnj llm status
+mtnj llm configure --provider openai --model <model-name> --clear-api-key
 
 # Audit and migrate existing or Obsidian-created notes
 mtnj names -p "C:\path\to\vault"
@@ -117,7 +122,9 @@ mtnj names -p "C:\path\to\vault" --preview --concurrency 4
 mtnj names -p "C:\path\to\vault" --apply
 ```
 
-Provider credentials are read only from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`; keys are never saved in the mtnj config file.
+Provider credentials are stored by provider in `~/.config/mdbase-tasknotes/credentials.json` (or the directory selected by `MDBASE_TASKNOTES_CONFIG_DIR`). This plaintext file is separate from `config.json`, is never shown by `mtnj config`, and uses owner-only file permissions on platforms that support them. The interactive prompt is recommended because `--api-key` values may remain in shell history.
+
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` remain supported and take precedence over saved keys, which makes temporary overrides and existing automation backward compatible. `mtnj llm status` reports the active source as `environment`, `saved`, or `not set` without printing the credential.
 
 `names --preview` makes provider calls for notes that need generation (or all selected notes with `--refresh`) and feeds the proposed slugs into the same hierarchy planner used by `--apply`. Its move plan shows compact project folders, parent-task folders, leaf filenames, and linked attachment destinations together, without writing metadata or moving files. `names --apply` scans links while the old hierarchy still exists, then serializes frontmatter updates, link-aware note moves, and attachment moves for safety. Attachment migration is automatic and attachment basenames are preserved. The default generation concurrency is 4 and the allowed range is 1–16. Because preview does not persist generated slugs, a later apply makes fresh provider calls and may produce slightly different semantic wording.
 

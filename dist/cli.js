@@ -6,7 +6,7 @@ var __export = (target, all) => {
 };
 
 // src/cli.ts
-import { readFileSync as readFileSync3 } from "fs";
+import { readFileSync as readFileSync4 } from "fs";
 import { Command } from "commander";
 
 // src/commands/init.ts
@@ -59,6 +59,9 @@ function setConfig(key, value) {
 }
 function getConfigPath() {
   return CONFIG_FILE;
+}
+function getConfigDir() {
+  return CONFIG_DIR;
 }
 function resolveUserPath(userPath) {
   return path.resolve(expandHomeDirectory(userPath));
@@ -645,12 +648,12 @@ function rankCandidates(query, candidates, titleField) {
 }
 function scoreCandidate(query, candidate, titleField) {
   const title = getTaskTitle(candidate, titleField).toLowerCase();
-  const path3 = candidate.path.toLowerCase();
+  const path4 = candidate.path.toLowerCase();
   let score = 0;
   if (title === query) score += 100;
   if (title.startsWith(query)) score += 50;
   if (title.includes(query)) score += 25;
-  if (path3.includes(query)) score += 10;
+  if (path4.includes(query)) score += 10;
   score += Math.max(0, 10 - Math.abs(title.length - query.length));
   return score;
 }
@@ -13390,9 +13393,92 @@ function hasValue(value) {
 }
 
 // src/naming.ts
-import { basename as basename4, join as join3 } from "path";
+import { basename as basename4, join as join4 } from "path";
 import { statSync } from "fs";
 import { format as format3 } from "date-fns";
+
+// src/credentials.ts
+import * as fs3 from "fs";
+import * as path3 from "path";
+var PROVIDERS = ["openai", "anthropic", "google"];
+function getCredentialsPath() {
+  return path3.join(getConfigDir(), "credentials.json");
+}
+function getSavedCredential(provider) {
+  return loadCredentials()[provider];
+}
+function saveCredential(provider, apiKey) {
+  const value = apiKey.trim();
+  if (!value) throw new Error("API key cannot be empty.");
+  const credentials = loadCredentials();
+  credentials[provider] = value;
+  writeCredentials(credentials);
+}
+function clearCredential(provider) {
+  const credentials = loadCredentials();
+  if (!(provider in credentials)) return false;
+  delete credentials[provider];
+  writeCredentials(credentials);
+  return true;
+}
+function resolveCredential(provider, environmentName) {
+  const environmentValue = process.env[environmentName];
+  if (environmentValue) return { apiKey: environmentValue, source: "environment" };
+  const savedValue = getSavedCredential(provider);
+  if (savedValue) return { apiKey: savedValue, source: "saved" };
+  return { source: "not set" };
+}
+function loadCredentials() {
+  const credentialsPath = getCredentialsPath();
+  let raw;
+  try {
+    raw = fs3.readFileSync(credentialsPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error(`Unable to read credentials file at ${credentialsPath}.`);
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid object");
+    const credentials = {};
+    for (const provider of PROVIDERS) {
+      const value = parsed[provider];
+      if (value === void 0) continue;
+      if (typeof value !== "string" || !value.trim()) throw new Error("invalid credential");
+      credentials[provider] = value;
+    }
+    return credentials;
+  } catch {
+    throw new Error(`Credentials file at ${credentialsPath} is malformed.`);
+  }
+}
+function writeCredentials(credentials) {
+  const directory = getConfigDir();
+  const credentialsPath = getCredentialsPath();
+  fs3.mkdirSync(directory, { recursive: true, mode: 448 });
+  restrictPermissions(directory, 448);
+  const temporaryPath = path3.join(directory, `.credentials-${process.pid}-${Date.now()}.tmp`);
+  try {
+    fs3.writeFileSync(temporaryPath, JSON.stringify(credentials, null, 2) + "\n", {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 384
+    });
+    restrictPermissions(temporaryPath, 384);
+    fs3.renameSync(temporaryPath, credentialsPath);
+    restrictPermissions(credentialsPath, 384);
+  } catch (error) {
+    try {
+      fs3.unlinkSync(temporaryPath);
+    } catch {
+    }
+    throw error;
+  }
+}
+function restrictPermissions(targetPath, mode) {
+  if (process.platform === "win32") return;
+  fs3.chmodSync(targetPath, mode);
+}
 
 // src/llm.ts
 var PROVIDER_KEY_ENV = {
@@ -13406,9 +13492,12 @@ function resolveLLMSettings() {
     return { reason: "LLM provider/model not configured" };
   }
   const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) return { reason: `${envName} is not set` };
-  return { settings: { provider: config.llmProvider, model: config.llmModel, apiKey } };
+  const credential = resolveCredential(config.llmProvider, envName);
+  if (!credential.apiKey) return { reason: `${envName} is not set and no saved credential was found` };
+  return {
+    settings: { provider: config.llmProvider, model: config.llmModel, apiKey: credential.apiKey },
+    credentialSource: credential.source
+  };
 }
 async function requestSemanticSlug(context, settings, fetchImpl = fetch) {
   const prompt = buildPrompt(context);
@@ -13549,7 +13638,7 @@ function resolveNamingDate(frontmatter, notePath, collectionRoot) {
   if (nameMatch) return nameMatch[1];
   if (collectionRoot) {
     try {
-      const stat = statSync(join3(collectionRoot, notePath));
+      const stat = statSync(join4(collectionRoot, notePath));
       const date = stat.birthtimeMs > 0 ? stat.birthtime : stat.mtime;
       return format3(date, "yyyy-MM-dd");
     } catch {
@@ -14953,7 +15042,13 @@ function configCommand(options) {
 // src/commands/llm.ts
 import { createInterface as createInterface2 } from "readline/promises";
 import { stdin as input, stdout as output } from "process";
+import { Writable } from "stream";
 async function llmConfigureCommand(options) {
+  if (options.apiKey !== void 0 && options.clearApiKey) {
+    showError("Use either --api-key or --clear-api-key, not both.");
+    process.exitCode = 1;
+    return;
+  }
   let provider = options.provider;
   let model = options.model;
   if ((!provider || !model) && process.stdin.isTTY) {
@@ -14975,10 +15070,30 @@ async function llmConfigureCommand(options) {
     process.exitCode = 1;
     return;
   }
-  setConfig("llmProvider", provider);
-  setConfig("llmModel", model.trim());
+  const typedProvider = provider;
+  let apiKey = options.apiKey;
+  if (apiKey === void 0 && !options.clearApiKey && process.stdin.isTTY) {
+    apiKey = await questionHidden("API key (leave blank to keep the saved key): ");
+  }
+  try {
+    if (options.clearApiKey) {
+      clearCredential(typedProvider);
+    } else if (apiKey !== void 0 && apiKey.trim()) {
+      saveCredential(typedProvider, apiKey);
+    } else if (options.apiKey !== void 0) {
+      throw new Error("API key cannot be empty.");
+    }
+    setConfig("llmProvider", provider);
+    setConfig("llmModel", model.trim());
+  } catch (error) {
+    showError(error.message);
+    process.exitCode = 1;
+    return;
+  }
   showSuccess(`Configured ${provider} / ${model.trim()}`);
-  console.log(`Set ${PROVIDER_KEY_ENV[provider]} in your environment to enable LLM naming.`);
+  if (options.clearApiKey) console.log(`Cleared the saved ${provider} API key.`);
+  else if (apiKey?.trim()) console.log(`Saved the ${provider} API key locally.`);
+  else console.log(`Credential unchanged. ${PROVIDER_KEY_ENV[typedProvider]} can override a saved key.`);
 }
 function llmStatusCommand() {
   const config = getConfig();
@@ -14986,7 +15101,13 @@ function llmStatusCommand() {
   console.log(`Model: ${config.llmModel ?? "(not configured)"}`);
   if (config.llmProvider) {
     const envName = PROVIDER_KEY_ENV[config.llmProvider];
-    console.log(`Credential: ${envName} ${process.env[envName] ? "is set" : "is not set"}`);
+    try {
+      const credential = resolveCredential(config.llmProvider, envName);
+      console.log(`Credential: ${credential.source}`);
+    } catch (error) {
+      showError(error.message);
+      process.exitCode = 1;
+    }
   }
 }
 async function llmTestCommand() {
@@ -14996,17 +15117,23 @@ async function llmTestCommand() {
     process.exitCode = 1;
     return;
   }
-  const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) {
-    showError(`${envName} is not set.`);
+  let resolved;
+  try {
+    resolved = resolveLLMSettings();
+  } catch (error) {
+    showError(error.message);
+    process.exitCode = 1;
+    return;
+  }
+  if (!resolved.settings) {
+    showError(resolved.reason ?? "LLM credential is not configured.");
     process.exitCode = 1;
     return;
   }
   try {
     const raw = await requestSemanticSlug(
       { title: "Initial attempt on dual-branch network", noteType: "task" },
-      { provider: config.llmProvider, model: config.llmModel, apiKey }
+      resolved.settings
     );
     const slug = normalizeLLMSlug(raw);
     if (!slug) throw new Error(`Invalid slug returned: ${raw.slice(0, 80)}`);
@@ -15016,6 +15143,21 @@ async function llmTestCommand() {
     process.exitCode = 1;
   }
 }
+async function questionHidden(prompt) {
+  output.write(prompt);
+  const mutedOutput = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    }
+  });
+  const rl = createInterface2({ input, output: mutedOutput, terminal: true });
+  try {
+    return await rl.question("");
+  } finally {
+    rl.close();
+    output.write("\n");
+  }
+}
 
 // src/commands/names.ts
 import { basename as basename8 } from "path";
@@ -15023,19 +15165,19 @@ import chalk13 from "chalk";
 
 // src/commands/organize.ts
 import chalk12 from "chalk";
-import { basename as basename7, dirname as dirname3, join as join5, relative as relative2, resolve as resolve3 } from "path";
-import { existsSync as existsSync3, mkdirSync as mkdirSync4, readdirSync as readdirSync2, rmdirSync } from "fs";
+import { basename as basename7, dirname as dirname3, join as join6, relative as relative2, resolve as resolve3 } from "path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, readdirSync as readdirSync2, rmdirSync } from "fs";
 
 // src/commands/organize-attachments.ts
 import chalk11 from "chalk";
-import { basename as basename6, dirname as dirname2, join as join4, relative, resolve as resolve2 } from "path";
+import { basename as basename6, dirname as dirname2, join as join5, relative, resolve as resolve2 } from "path";
 import {
   existsSync as existsSync2,
-  mkdirSync as mkdirSync3,
+  mkdirSync as mkdirSync4,
   readdirSync,
-  renameSync,
-  readFileSync as readFileSync2,
-  writeFileSync as writeFileSync3
+  renameSync as renameSync2,
+  readFileSync as readFileSync3,
+  writeFileSync as writeFileSync4
 } from "fs";
 var OWNED_NOTE_TYPES = /* @__PURE__ */ new Set(["task-card", "prompt-note", "copilot-conversation"]);
 var OWNED_NOTE_FALLBACK_FOLDER = {
@@ -15054,7 +15196,7 @@ function walkMdFiles(root) {
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
-      const full = join4(dir, e.name);
+      const full = join5(dir, e.name);
       if (e.isDirectory()) {
         walk(full);
       } else if (e.isFile() && e.name.endsWith(".md")) {
@@ -15250,7 +15392,7 @@ function planAttachmentMoves(scanResult, desiredPaths, collectionRoot = "") {
       stationaryBinaries.push({ path: normalized, referencingNotes: refs });
       continue;
     }
-    const absoluteTarget = collectionRoot ? join4(collectionRoot, desiredTo) : desiredTo;
+    const absoluteTarget = collectionRoot ? join5(collectionRoot, desiredTo) : desiredTo;
     if (absoluteTarget.length > 220) {
       warnings.push(`Path exceeds 220 characters: "${desiredTo}" \u2014 skipping "${normalized}"`);
       stationaryBinaries.push({ path: normalized, referencingNotes: refs });
@@ -15342,7 +15484,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.promotionMoves) {
     try {
-      mkdirSync3(dirname2(join4(collectionRoot, move.to)), { recursive: true });
+      mkdirSync4(dirname2(join5(collectionRoot, move.to)), { recursive: true });
       await collection.rename({ from: move.from, to: move.to, update_refs: true });
       console.log(
         chalk11.green("  \u2713 ") + chalk11.dim(`[promote] ${move.from}`) + chalk11.dim(" \u2192 ") + move.to
@@ -15357,7 +15499,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.ownedNoteMoves) {
     try {
-      mkdirSync3(dirname2(join4(collectionRoot, move.to)), { recursive: true });
+      mkdirSync4(dirname2(join5(collectionRoot, move.to)), { recursive: true });
       await collection.rename({ from: move.from, to: move.to, update_refs: true });
       console.log(
         chalk11.green("  \u2713 ") + chalk11.dim(`[${move.noteType}] ${move.from}`) + chalk11.dim(" \u2192 ") + move.to
@@ -15376,10 +15518,10 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.binaryMoves) {
     try {
-      const absFrom = join4(collectionRoot, move.from);
-      const absTo = join4(collectionRoot, move.to);
-      mkdirSync3(dirname2(absTo), { recursive: true });
-      renameSync(absFrom, absTo);
+      const absFrom = join5(collectionRoot, move.from);
+      const absTo = join5(collectionRoot, move.to);
+      mkdirSync4(dirname2(absTo), { recursive: true });
+      renameSync2(absFrom, absTo);
       finalBinaryPaths.set(move.from, move.to);
       console.log(
         chalk11.green("  \u2713 ") + chalk11.dim(`[binary] ${move.from}`) + chalk11.dim(" \u2192 ") + move.to
@@ -15406,9 +15548,9 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
     }
     for (const noteFinalPath of affectedNotes) {
       try {
-        const absPath = join4(collectionRoot, noteFinalPath);
+        const absPath = join5(collectionRoot, noteFinalPath);
         if (!existsSync2(absPath)) continue;
-        const raw = readFileSync2(absPath, "utf-8");
+        const raw = readFileSync3(absPath, "utf-8");
         const updated = updateMarkdownBodyLinks(
           raw,
           noteFinalPath,
@@ -15416,7 +15558,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
           collectionRoot
         );
         if (updated !== raw) {
-          writeFileSync3(absPath, updated, "utf-8");
+          writeFileSync4(absPath, updated, "utf-8");
         }
       } catch {
       }
@@ -15425,10 +15567,10 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   return { succeeded, failed };
 }
 function updateMarkdownBodyLinks(content, noteFinalPath, movedBinaries, collectionRoot) {
-  const noteAbsDir = join4(collectionRoot, dirname2(noteFinalPath));
+  const noteAbsDir = join5(collectionRoot, dirname2(noteFinalPath));
   let updated = content;
   for (const [oldRel, newRel] of movedBinaries) {
-    const newAbs = join4(collectionRoot, newRel);
+    const newAbs = join5(collectionRoot, newRel);
     const newRelFromNote = relative(noteAbsDir, newAbs).replace(/\\/g, "/");
     const fname = basename6(oldRel).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const mdRe = new RegExp(
@@ -15530,23 +15672,23 @@ async function organizeCommand(options) {
       const projectFolderMap = /* @__PURE__ */ new Map();
       for (const p of projects2) {
         const projStem = stem(p.path);
-        const folder = normalizeSlashes(join5("projects", projStem));
+        const folder = normalizeSlashes(join6("projects", projStem));
         projectFolderMap.set(p.path, folder);
       }
       const desiredPaths = /* @__PURE__ */ new Map();
       for (const p of projects2) {
         const folder = projectFolderMap.get(p.path);
-        const desired = normalizeSlashes(join5(folder, fileName(p.path)));
+        const desired = normalizeSlashes(join6(folder, fileName(p.path)));
         desiredPaths.set(p.path, desired);
       }
       for (const task of tasks) {
         const projectPath = taskToProject.get(task.path);
         if (!projectPath) {
           if (options.orphans === "unassigned") {
-            const desired = normalizeSlashes(join5("projects/_unassigned", fileName(task.path)));
+            const desired = normalizeSlashes(join6("projects/_unassigned", fileName(task.path)));
             desiredPaths.set(task.path, desired);
           } else if (options.nameOverrides?.has(task.path) || desiredCompactStem("task", task.frontmatter, task.path, collectionRoot)) {
-            desiredPaths.set(task.path, normalizeSlashes(join5(dirname3(task.path), fileName(task.path))));
+            desiredPaths.set(task.path, normalizeSlashes(join6(dirname3(task.path), fileName(task.path))));
           }
           continue;
         }
@@ -15560,16 +15702,16 @@ async function organizeCommand(options) {
         for (const ancestorPath of ancestorChain) {
           const hasChildren2 = (childrenOf.get(ancestorPath)?.size ?? 0) > 0;
           if (hasChildren2) {
-            currentDir = normalizeSlashes(join5(currentDir, stem(ancestorPath)));
+            currentDir = normalizeSlashes(join6(currentDir, stem(ancestorPath)));
           }
         }
         const hasChildren = (childrenOf.get(task.path)?.size ?? 0) > 0;
         const alreadyInOwnSubfolder = basename7(dirname3(task.path)) === basename7(task.path, ".md");
         if (hasChildren || alreadyInOwnSubfolder) {
-          const taskFolder = normalizeSlashes(join5(currentDir, stem(task.path)));
-          desiredPaths.set(task.path, normalizeSlashes(join5(taskFolder, fileName(task.path))));
+          const taskFolder = normalizeSlashes(join6(currentDir, stem(task.path)));
+          desiredPaths.set(task.path, normalizeSlashes(join6(taskFolder, fileName(task.path))));
         } else {
-          desiredPaths.set(task.path, normalizeSlashes(join5(currentDir, fileName(task.path))));
+          desiredPaths.set(task.path, normalizeSlashes(join6(currentDir, fileName(task.path))));
         }
       }
       let alreadyOrganized = 0;
@@ -15657,8 +15799,8 @@ async function organizeCommand(options) {
         let failed = 0;
         for (const move of moves) {
           try {
-            const targetDir = dirname3(join5(collectionRoot, move.to));
-            mkdirSync4(targetDir, { recursive: true });
+            const targetDir = dirname3(join6(collectionRoot, move.to));
+            mkdirSync5(targetDir, { recursive: true });
             await collection.rename({
               from: move.from,
               to: move.to,
@@ -16347,14 +16489,14 @@ program.command("interactive").alias("i").description("Interactive REPL with liv
 });
 program.command("config").description("Manage CLI configuration").option("--set <key=value>", "Set a config value").option("--get <key>", "Get a config value").option("--list", "List all config values").action(configCommand);
 var llm = program.command("llm").description("Configure and test LLM-assisted naming");
-llm.command("configure").option("--provider <provider>", "openai, anthropic, or google").option("--model <model>", "Provider model name").action(llmConfigureCommand);
+llm.command("configure").option("--provider <provider>", "openai, anthropic, or google").option("--model <model>", "Provider model name").option("--api-key <key>", "Save an API key locally (may be visible in shell history)").option("--clear-api-key", "Remove the selected provider's saved API key").action(llmConfigureCommand);
 llm.command("status").description("Show LLM configuration and credential status").action(llmStatusCommand);
 llm.command("test").description("Validate the configured provider and model").action(llmTestCommand);
 function collect(value, previous) {
   return previous.concat([value]);
 }
 function readPackageVersion() {
-  const raw = readFileSync3(new URL("../package.json", import.meta.url), "utf8");
+  const raw = readFileSync4(new URL("../package.json", import.meta.url), "utf8");
   const pkg2 = JSON.parse(raw);
   if (typeof pkg2.version !== "string" || pkg2.version.trim().length === 0) {
     throw new Error("Package version is missing from package.json");

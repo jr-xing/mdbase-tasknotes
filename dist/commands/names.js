@@ -30,6 +30,9 @@ function load() {
 function getConfig() {
   return load();
 }
+function getConfigDir() {
+  return CONFIG_DIR;
+}
 function resolveUserPath(userPath) {
   return path.resolve(expandHomeDirectory(userPath));
 }
@@ -180,9 +183,51 @@ async function withCollection(fn, flagPath) {
 }
 
 // src/naming.ts
-import { basename as basename3, join as join2 } from "path";
+import { basename as basename3, join as join3 } from "path";
 import { statSync } from "fs";
 import { format } from "date-fns";
+
+// src/credentials.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+var PROVIDERS = ["openai", "anthropic", "google"];
+function getCredentialsPath() {
+  return path2.join(getConfigDir(), "credentials.json");
+}
+function getSavedCredential(provider) {
+  return loadCredentials()[provider];
+}
+function resolveCredential(provider, environmentName) {
+  const environmentValue = process.env[environmentName];
+  if (environmentValue) return { apiKey: environmentValue, source: "environment" };
+  const savedValue = getSavedCredential(provider);
+  if (savedValue) return { apiKey: savedValue, source: "saved" };
+  return { source: "not set" };
+}
+function loadCredentials() {
+  const credentialsPath = getCredentialsPath();
+  let raw;
+  try {
+    raw = fs2.readFileSync(credentialsPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error(`Unable to read credentials file at ${credentialsPath}.`);
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid object");
+    const credentials = {};
+    for (const provider of PROVIDERS) {
+      const value = parsed[provider];
+      if (value === void 0) continue;
+      if (typeof value !== "string" || !value.trim()) throw new Error("invalid credential");
+      credentials[provider] = value;
+    }
+    return credentials;
+  } catch {
+    throw new Error(`Credentials file at ${credentialsPath} is malformed.`);
+  }
+}
 
 // src/llm.ts
 var PROVIDER_KEY_ENV = {
@@ -196,9 +241,12 @@ function resolveLLMSettings() {
     return { reason: "LLM provider/model not configured" };
   }
   const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) return { reason: `${envName} is not set` };
-  return { settings: { provider: config.llmProvider, model: config.llmModel, apiKey } };
+  const credential = resolveCredential(config.llmProvider, envName);
+  if (!credential.apiKey) return { reason: `${envName} is not set and no saved credential was found` };
+  return {
+    settings: { provider: config.llmProvider, model: config.llmModel, apiKey: credential.apiKey },
+    credentialSource: credential.source
+  };
 }
 async function requestSemanticSlug(context, settings, fetchImpl = fetch) {
   const prompt = buildPrompt(context);
@@ -339,7 +387,7 @@ function resolveNamingDate(frontmatter, notePath, collectionRoot) {
   if (nameMatch) return nameMatch[1];
   if (collectionRoot) {
     try {
-      const stat = statSync(join2(collectionRoot, notePath));
+      const stat = statSync(join3(collectionRoot, notePath));
       const date = stat.birthtimeMs > 0 ? stat.birthtime : stat.mtime;
       return format(date, "yyyy-MM-dd");
     } catch {
@@ -387,8 +435,8 @@ function showWarning(msg) {
 
 // src/commands/organize.ts
 import chalk3 from "chalk";
-import { basename as basename7, dirname as dirname3, join as join4, relative as relative2, resolve as resolve3 } from "path";
-import { existsSync as existsSync2, mkdirSync as mkdirSync3, readdirSync as readdirSync2, rmdirSync } from "fs";
+import { basename as basename7, dirname as dirname3, join as join5, relative as relative2, resolve as resolve3 } from "path";
+import { existsSync as existsSync2, mkdirSync as mkdirSync4, readdirSync as readdirSync2, rmdirSync } from "fs";
 
 // src/project-resolver.ts
 import { basename as basename5, dirname } from "path";
@@ -431,14 +479,14 @@ function resolveLinkToPath(collection, sourcePath, rawLink, resolverContext) {
 
 // src/commands/organize-attachments.ts
 import chalk2 from "chalk";
-import { basename as basename6, dirname as dirname2, join as join3, relative, resolve as resolve2 } from "path";
+import { basename as basename6, dirname as dirname2, join as join4, relative, resolve as resolve2 } from "path";
 import {
   existsSync,
-  mkdirSync as mkdirSync2,
+  mkdirSync as mkdirSync3,
   readdirSync,
-  renameSync,
-  readFileSync as readFileSync2,
-  writeFileSync as writeFileSync2
+  renameSync as renameSync2,
+  readFileSync as readFileSync3,
+  writeFileSync as writeFileSync3
 } from "fs";
 var OWNED_NOTE_TYPES = /* @__PURE__ */ new Set(["task-card", "prompt-note", "copilot-conversation"]);
 var OWNED_NOTE_FALLBACK_FOLDER = {
@@ -457,7 +505,7 @@ function walkMdFiles(root) {
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
-      const full = join3(dir, e.name);
+      const full = join4(dir, e.name);
       if (e.isDirectory()) {
         walk(full);
       } else if (e.isFile() && e.name.endsWith(".md")) {
@@ -653,7 +701,7 @@ function planAttachmentMoves(scanResult, desiredPaths, collectionRoot = "") {
       stationaryBinaries.push({ path: normalized, referencingNotes: refs });
       continue;
     }
-    const absoluteTarget = collectionRoot ? join3(collectionRoot, desiredTo) : desiredTo;
+    const absoluteTarget = collectionRoot ? join4(collectionRoot, desiredTo) : desiredTo;
     if (absoluteTarget.length > 220) {
       warnings.push(`Path exceeds 220 characters: "${desiredTo}" \u2014 skipping "${normalized}"`);
       stationaryBinaries.push({ path: normalized, referencingNotes: refs });
@@ -745,7 +793,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.promotionMoves) {
     try {
-      mkdirSync2(dirname2(join3(collectionRoot, move.to)), { recursive: true });
+      mkdirSync3(dirname2(join4(collectionRoot, move.to)), { recursive: true });
       await collection.rename({ from: move.from, to: move.to, update_refs: true });
       console.log(
         chalk2.green("  \u2713 ") + chalk2.dim(`[promote] ${move.from}`) + chalk2.dim(" \u2192 ") + move.to
@@ -760,7 +808,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.ownedNoteMoves) {
     try {
-      mkdirSync2(dirname2(join3(collectionRoot, move.to)), { recursive: true });
+      mkdirSync3(dirname2(join4(collectionRoot, move.to)), { recursive: true });
       await collection.rename({ from: move.from, to: move.to, update_refs: true });
       console.log(
         chalk2.green("  \u2713 ") + chalk2.dim(`[${move.noteType}] ${move.from}`) + chalk2.dim(" \u2192 ") + move.to
@@ -779,10 +827,10 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   }
   for (const move of plan.binaryMoves) {
     try {
-      const absFrom = join3(collectionRoot, move.from);
-      const absTo = join3(collectionRoot, move.to);
-      mkdirSync2(dirname2(absTo), { recursive: true });
-      renameSync(absFrom, absTo);
+      const absFrom = join4(collectionRoot, move.from);
+      const absTo = join4(collectionRoot, move.to);
+      mkdirSync3(dirname2(absTo), { recursive: true });
+      renameSync2(absFrom, absTo);
       finalBinaryPaths.set(move.from, move.to);
       console.log(
         chalk2.green("  \u2713 ") + chalk2.dim(`[binary] ${move.from}`) + chalk2.dim(" \u2192 ") + move.to
@@ -809,9 +857,9 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
     }
     for (const noteFinalPath of affectedNotes) {
       try {
-        const absPath = join3(collectionRoot, noteFinalPath);
+        const absPath = join4(collectionRoot, noteFinalPath);
         if (!existsSync(absPath)) continue;
-        const raw = readFileSync2(absPath, "utf-8");
+        const raw = readFileSync3(absPath, "utf-8");
         const updated = updateMarkdownBodyLinks(
           raw,
           noteFinalPath,
@@ -819,7 +867,7 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
           collectionRoot
         );
         if (updated !== raw) {
-          writeFileSync2(absPath, updated, "utf-8");
+          writeFileSync3(absPath, updated, "utf-8");
         }
       } catch {
       }
@@ -828,10 +876,10 @@ async function executeAttachmentMoves(collection, collectionRoot, plan) {
   return { succeeded, failed };
 }
 function updateMarkdownBodyLinks(content, noteFinalPath, movedBinaries, collectionRoot) {
-  const noteAbsDir = join3(collectionRoot, dirname2(noteFinalPath));
+  const noteAbsDir = join4(collectionRoot, dirname2(noteFinalPath));
   let updated = content;
   for (const [oldRel, newRel] of movedBinaries) {
-    const newAbs = join3(collectionRoot, newRel);
+    const newAbs = join4(collectionRoot, newRel);
     const newRelFromNote = relative(noteAbsDir, newAbs).replace(/\\/g, "/");
     const fname = basename6(oldRel).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const mdRe = new RegExp(
@@ -933,23 +981,23 @@ async function organizeCommand(options) {
       const projectFolderMap = /* @__PURE__ */ new Map();
       for (const p of projects) {
         const projStem = stem(p.path);
-        const folder = normalizeSlashes(join4("projects", projStem));
+        const folder = normalizeSlashes(join5("projects", projStem));
         projectFolderMap.set(p.path, folder);
       }
       const desiredPaths = /* @__PURE__ */ new Map();
       for (const p of projects) {
         const folder = projectFolderMap.get(p.path);
-        const desired = normalizeSlashes(join4(folder, fileName(p.path)));
+        const desired = normalizeSlashes(join5(folder, fileName(p.path)));
         desiredPaths.set(p.path, desired);
       }
       for (const task of tasks) {
         const projectPath = taskToProject.get(task.path);
         if (!projectPath) {
           if (options.orphans === "unassigned") {
-            const desired = normalizeSlashes(join4("projects/_unassigned", fileName(task.path)));
+            const desired = normalizeSlashes(join5("projects/_unassigned", fileName(task.path)));
             desiredPaths.set(task.path, desired);
           } else if (options.nameOverrides?.has(task.path) || desiredCompactStem("task", task.frontmatter, task.path, collectionRoot)) {
-            desiredPaths.set(task.path, normalizeSlashes(join4(dirname3(task.path), fileName(task.path))));
+            desiredPaths.set(task.path, normalizeSlashes(join5(dirname3(task.path), fileName(task.path))));
           }
           continue;
         }
@@ -963,16 +1011,16 @@ async function organizeCommand(options) {
         for (const ancestorPath of ancestorChain) {
           const hasChildren2 = (childrenOf.get(ancestorPath)?.size ?? 0) > 0;
           if (hasChildren2) {
-            currentDir = normalizeSlashes(join4(currentDir, stem(ancestorPath)));
+            currentDir = normalizeSlashes(join5(currentDir, stem(ancestorPath)));
           }
         }
         const hasChildren = (childrenOf.get(task.path)?.size ?? 0) > 0;
         const alreadyInOwnSubfolder = basename7(dirname3(task.path)) === basename7(task.path, ".md");
         if (hasChildren || alreadyInOwnSubfolder) {
-          const taskFolder = normalizeSlashes(join4(currentDir, stem(task.path)));
-          desiredPaths.set(task.path, normalizeSlashes(join4(taskFolder, fileName(task.path))));
+          const taskFolder = normalizeSlashes(join5(currentDir, stem(task.path)));
+          desiredPaths.set(task.path, normalizeSlashes(join5(taskFolder, fileName(task.path))));
         } else {
-          desiredPaths.set(task.path, normalizeSlashes(join4(currentDir, fileName(task.path))));
+          desiredPaths.set(task.path, normalizeSlashes(join5(currentDir, fileName(task.path))));
         }
       }
       let alreadyOrganized = 0;
@@ -1060,8 +1108,8 @@ async function organizeCommand(options) {
         let failed = 0;
         for (const move of moves) {
           try {
-            const targetDir = dirname3(join4(collectionRoot, move.to));
-            mkdirSync3(targetDir, { recursive: true });
+            const targetDir = dirname3(join5(collectionRoot, move.to));
+            mkdirSync4(targetDir, { recursive: true });
             await collection.rename({
               from: move.from,
               to: move.to,

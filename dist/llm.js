@@ -22,6 +22,51 @@ function load() {
 function getConfig() {
   return load();
 }
+function getConfigDir() {
+  return CONFIG_DIR;
+}
+
+// src/credentials.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+var PROVIDERS = ["openai", "anthropic", "google"];
+function getCredentialsPath() {
+  return path2.join(getConfigDir(), "credentials.json");
+}
+function getSavedCredential(provider) {
+  return loadCredentials()[provider];
+}
+function resolveCredential(provider, environmentName) {
+  const environmentValue = process.env[environmentName];
+  if (environmentValue) return { apiKey: environmentValue, source: "environment" };
+  const savedValue = getSavedCredential(provider);
+  if (savedValue) return { apiKey: savedValue, source: "saved" };
+  return { source: "not set" };
+}
+function loadCredentials() {
+  const credentialsPath = getCredentialsPath();
+  let raw;
+  try {
+    raw = fs2.readFileSync(credentialsPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error(`Unable to read credentials file at ${credentialsPath}.`);
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid object");
+    const credentials = {};
+    for (const provider of PROVIDERS) {
+      const value = parsed[provider];
+      if (value === void 0) continue;
+      if (typeof value !== "string" || !value.trim()) throw new Error("invalid credential");
+      credentials[provider] = value;
+    }
+    return credentials;
+  } catch {
+    throw new Error(`Credentials file at ${credentialsPath} is malformed.`);
+  }
+}
 
 // src/llm.ts
 var PROVIDER_KEY_ENV = {
@@ -35,9 +80,12 @@ function resolveLLMSettings() {
     return { reason: "LLM provider/model not configured" };
   }
   const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) return { reason: `${envName} is not set` };
-  return { settings: { provider: config.llmProvider, model: config.llmModel, apiKey } };
+  const credential = resolveCredential(config.llmProvider, envName);
+  if (!credential.apiKey) return { reason: `${envName} is not set and no saved credential was found` };
+  return {
+    settings: { provider: config.llmProvider, model: config.llmModel, apiKey: credential.apiKey },
+    credentialSource: credential.source
+  };
 }
 async function requestSemanticSlug(context, settings, fetchImpl = fetch) {
   const prompt = buildPrompt(context);

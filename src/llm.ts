@@ -1,5 +1,6 @@
 import type { LLMProvider } from "./types.js";
 import { getConfig } from "./config.js";
+import { resolveCredential, type CredentialSource } from "./credentials.js";
 
 export interface SlugPromptContext {
   title: string;
@@ -20,15 +21,18 @@ export const PROVIDER_KEY_ENV: Record<LLMProvider, string> = {
   google: "GEMINI_API_KEY",
 };
 
-export function resolveLLMSettings(): { settings?: LLMSettings; reason?: string } {
+export function resolveLLMSettings(): { settings?: LLMSettings; reason?: string; credentialSource?: CredentialSource } {
   const config = getConfig();
   if (!config.llmProvider || !config.llmModel) {
     return { reason: "LLM provider/model not configured" };
   }
   const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) return { reason: `${envName} is not set` };
-  return { settings: { provider: config.llmProvider, model: config.llmModel, apiKey } };
+  const credential = resolveCredential(config.llmProvider, envName);
+  if (!credential.apiKey) return { reason: `${envName} is not set and no saved credential was found` };
+  return {
+    settings: { provider: config.llmProvider, model: config.llmModel, apiKey: credential.apiKey },
+    credentialSource: credential.source,
+  };
 }
 
 export async function requestSemanticSlug(

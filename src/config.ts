@@ -52,6 +52,10 @@ export function getConfigPath(): string {
   return CONFIG_FILE;
 }
 
+export function getConfigDir(): string {
+  return CONFIG_DIR;
+}
+
 export function resolveUserPath(userPath: string): string {
   return path.resolve(expandHomeDirectory(userPath));
 }

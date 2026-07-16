@@ -1,12 +1,24 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { Writable } from "node:stream";
 import { getConfig, setConfig } from "../config.js";
-import { PROVIDER_KEY_ENV, requestSemanticSlug } from "../llm.js";
+import { clearCredential, resolveCredential, saveCredential } from "../credentials.js";
+import { PROVIDER_KEY_ENV, requestSemanticSlug, resolveLLMSettings } from "../llm.js";
 import { normalizeLLMSlug } from "../naming.js";
 import { showError, showSuccess } from "../format.js";
 import type { LLMProvider } from "../types.js";
 
-export async function llmConfigureCommand(options: { provider?: string; model?: string }): Promise<void> {
+export async function llmConfigureCommand(options: {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}): Promise<void> {
+  if (options.apiKey !== undefined && options.clearApiKey) {
+    showError("Use either --api-key or --clear-api-key, not both.");
+    process.exitCode = 1;
+    return;
+  }
   let provider = options.provider;
   let model = options.model;
   if ((!provider || !model) && process.stdin.isTTY) {
@@ -28,10 +40,32 @@ export async function llmConfigureCommand(options: { provider?: string; model?: 
     process.exitCode = 1;
     return;
   }
-  setConfig("llmProvider", provider);
-  setConfig("llmModel", model.trim());
+  const typedProvider = provider as LLMProvider;
+  let apiKey = options.apiKey;
+  if (apiKey === undefined && !options.clearApiKey && process.stdin.isTTY) {
+    apiKey = await questionHidden("API key (leave blank to keep the saved key): ");
+  }
+
+  try {
+    if (options.clearApiKey) {
+      clearCredential(typedProvider);
+    } else if (apiKey !== undefined && apiKey.trim()) {
+      saveCredential(typedProvider, apiKey);
+    } else if (options.apiKey !== undefined) {
+      throw new Error("API key cannot be empty.");
+    }
+    setConfig("llmProvider", provider);
+    setConfig("llmModel", model.trim());
+  } catch (error) {
+    showError((error as Error).message);
+    process.exitCode = 1;
+    return;
+  }
+
   showSuccess(`Configured ${provider} / ${model.trim()}`);
-  console.log(`Set ${PROVIDER_KEY_ENV[provider as LLMProvider]} in your environment to enable LLM naming.`);
+  if (options.clearApiKey) console.log(`Cleared the saved ${provider} API key.`);
+  else if (apiKey?.trim()) console.log(`Saved the ${provider} API key locally.`);
+  else console.log(`Credential unchanged. ${PROVIDER_KEY_ENV[typedProvider]} can override a saved key.`);
 }
 
 export function llmStatusCommand(): void {
@@ -40,7 +74,13 @@ export function llmStatusCommand(): void {
   console.log(`Model: ${config.llmModel ?? "(not configured)"}`);
   if (config.llmProvider) {
     const envName = PROVIDER_KEY_ENV[config.llmProvider];
-    console.log(`Credential: ${envName} ${process.env[envName] ? "is set" : "is not set"}`);
+    try {
+      const credential = resolveCredential(config.llmProvider, envName);
+      console.log(`Credential: ${credential.source}`);
+    } catch (error) {
+      showError((error as Error).message);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -51,17 +91,23 @@ export async function llmTestCommand(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const envName = PROVIDER_KEY_ENV[config.llmProvider];
-  const apiKey = process.env[envName];
-  if (!apiKey) {
-    showError(`${envName} is not set.`);
+  let resolved: ReturnType<typeof resolveLLMSettings>;
+  try {
+    resolved = resolveLLMSettings();
+  } catch (error) {
+    showError((error as Error).message);
+    process.exitCode = 1;
+    return;
+  }
+  if (!resolved.settings) {
+    showError(resolved.reason ?? "LLM credential is not configured.");
     process.exitCode = 1;
     return;
   }
   try {
     const raw = await requestSemanticSlug(
       { title: "Initial attempt on dual-branch network", noteType: "task" },
-      { provider: config.llmProvider, model: config.llmModel, apiKey },
+      resolved.settings,
     );
     const slug = normalizeLLMSlug(raw);
     if (!slug) throw new Error(`Invalid slug returned: ${raw.slice(0, 80)}`);
@@ -69,5 +115,21 @@ export async function llmTestCommand(): Promise<void> {
   } catch (error) {
     showError((error as Error).message);
     process.exitCode = 1;
+  }
+}
+
+async function questionHidden(prompt: string): Promise<string> {
+  output.write(prompt);
+  const mutedOutput = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  });
+  const rl = createInterface({ input, output: mutedOutput, terminal: true });
+  try {
+    return await rl.question("");
+  } finally {
+    rl.close();
+    output.write("\n");
   }
 }

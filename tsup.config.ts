@@ -32,6 +32,7 @@ export default defineConfig([
       "src/recurrence.ts",
       "src/create-compat.ts",
       "src/config.ts",
+      "src/credentials.ts",
       "src/collection.ts",
       "src/mapper.ts",
       "src/conformance.ts",
